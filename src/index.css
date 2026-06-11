@@ -1,0 +1,181 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    background-color: theme('colors.canvas.paper');
+    color: theme('colors.slate.900');
+    min-height: 100vh;
+  }
+
+  :is(.dark body) {
+    background-color: theme('colors.canvas.dark');
+    color: theme('colors.slate.100');
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-sans tracking-tight;
+  }
+}
+
+@layer utilities {
+  .bg-grid {
+    background-size: 40px 40px;
+    background-image: linear-gradient(to right, rgba(0, 0, 0, 0.05) 1px, transparent 1px),
+                      linear-gradient(to bottom, rgba(0, 0, 0, 0.05) 1px, transparent 1px);
+  }
+
+  .dark .bg-grid {
+    background-size: 32px 32px;
+    background-image: linear-gradient(to right, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+                      linear-gradient(to bottom, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+  }
+
+  .card-shadow {
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 2px 8px rgba(15, 23, 42, 0.06);
+  }
+
+  .dark .card-shadow {
+    box-shadow: none;
+  }
+
+  .tactical-panel {
+    @apply bg-white dark:bg-tactical-surface border border-slate-200 dark:border-tactical-border rounded-xl;
+  }
+
+  .label-mono {
+    @apply font-sans uppercase tracking-wide text-[11px] font-medium leading-tight text-slate-400 dark:text-tactical-label;
+  }
+
+  .seg-bar {
+    background-color: currentColor;
+  }
+
+  .scanline {
+    position: relative;
+  }
+  .scanline::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image: repeating-linear-gradient(
+      to bottom,
+      rgba(255, 255, 255, 0.025) 0px,
+      rgba(255, 255, 255, 0.025) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+  }
+
+  .caret::after {
+    content: '_';
+    @apply animate-caret-blink text-signal-green;
+  }
+
+  .live-dot {
+    animation: live-blink 1.4s ease-in-out infinite;
+  }
+}
+
+@keyframes live-blink {
+  0%, 100% { opacity: 1; box-shadow: 0 0 4px #34d399; }
+  50% { opacity: 0.5; box-shadow: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scanline::after {
+    background-image: none;
+  }
+  .caret::after {
+    animation: none;
+  }
+}
+
+.sim-scope input[type='range'],
+.sim-scope input[type='checkbox'],
+.sim-scope input[type='radio'],
+.sim-scope select,
+.sim-scope progress {
+  accent-color: theme('colors.brand.500');
+}
+
+.dark .sim-scope {
+  --tw-prose-body: theme('colors.tactical.dim');
+}
+
+.dark .sim-scope .bg-white:not([class*="dark:bg-"]),
+.dark .sim-scope .bg-slate-50:not([class*="dark:bg-"]),
+.dark .sim-scope .bg-slate-100:not([class*="dark:bg-"]),
+.dark .sim-scope .bg-gray-50:not([class*="dark:bg-"]),
+.dark .sim-scope .bg-gray-100:not([class*="dark:bg-"]) {
+  background-color: theme('colors.tactical.surface') !important;
+}
+.dark .sim-scope .bg-slate-800:not([class*="dark:bg-"]),
+.dark .sim-scope .bg-slate-900:not([class*="dark:bg-"]),
+.dark .sim-scope .bg-gray-800:not([class*="dark:bg-"]),
+.dark .sim-scope .bg-gray-900:not([class*="dark:bg-"]),
+.dark .sim-scope .bg-zinc-800:not([class*="dark:bg-"]),
+.dark .sim-scope .bg-zinc-900:not([class*="dark:bg-"]) {
+  background-color: theme('colors.tactical.surface') !important;
+}
+.dark .sim-scope .bg-slate-700:not([class*="dark:bg-"]),
+.dark .sim-scope .bg-gray-700:not([class*="dark:bg-"]),
+.dark .sim-scope .bg-zinc-700:not([class*="dark:bg-"]) {
+  background-color: theme('colors.tactical.raised') !important;
+}
+
+.dark .sim-scope .border,
+.dark .sim-scope .border-2,
+.dark .sim-scope .border-t,
+.dark .sim-scope .border-b,
+.dark .sim-scope .border-l,
+.dark .sim-scope .border-r {
+  border-color: theme('colors.tactical.border');
+}
+
+/* Alt+drag duplicate cursor feedback */
+.alt-held .react-flow__node {
+  cursor: copy !important;
+}
+
+/* React Flow dark tactical theme */
+.dark .react-flow {
+  background-color: #0a0a0b;
+}
+
+.dark .react-flow__controls-button {
+  background-color: theme('colors.tactical.surface');
+  border-color: theme('colors.tactical.border');
+  color: theme('colors.tactical.text');
+}
+.dark .react-flow__controls-button:hover {
+  background-color: theme('colors.tactical.raised');
+}
+.dark .react-flow__controls-button svg {
+  fill: currentColor;
+}
+.dark .react-flow__minimap {
+  background-color: #101012;
+  border: 1px solid #26262b;
+  border-radius: 6px;
+}
+.dark .react-flow__minimap-mask {
+  fill: rgba(10, 10, 11, 0.75);
+}
+.dark .react-flow__attribution {
+  background: transparent;
+  color: theme('colors.tactical.label');
+}
+.dark .react-flow__edge-path {
+  stroke: #3a3f4d;
+}
+.dark .react-flow__edge.selected .react-flow__edge-path,
+.dark .react-flow__edge:hover .react-flow__edge-path {
+  stroke: theme('colors.signal.green');
+}
+.dark .react-flow__handle {
+  background-color: theme('colors.signal.green');
+  border-color: theme('colors.tactical.bg');
+}

@@ -1,0 +1,282 @@
+// System-level dashboard: live stats + recharts time-series fed from the
+// simulator's frame history.
+
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+} from 'recharts';
+import { useTranslation } from 'react-i18next';
+import { SimulationFrame } from '../engine/types';
+import { providerLabel, CloudProvider } from '../engine/costModel';
+
+interface Props {
+  history: SimulationFrame[];
+  totalCost: number;
+  /** Live per-hour cost that reacts to config edits even when idle. */
+  costPerHour?: number;
+  /** Cumulative successful requests over the run. */
+  successCount?: number;
+  /** Cumulative failed requests over the run. */
+  failedCount?: number;
+  provider: CloudProvider;
+  warnings: string[];
+  onCostClick?: () => void;
+}
+
+/** Compact human-readable count (e.g. 12.3k, 4.1M). */
+function fmtCount(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return `${Math.round(n)}`;
+}
+
+const SLO_P95_MS = 250;
+const SLO_SUCCESS = 0.99;
+
+function Stat({ label, value, tone, onClick, title }: { label: string; value: string; tone?: string; onClick?: () => void; title?: string }) {
+  return (
+    <div
+      onClick={onClick}
+      title={title}
+      className={`border border-tactical-border bg-tactical-raised rounded-lg px-3 py-2 ${onClick ? 'cursor-pointer hover:border-signal-cyan transition-colors' : ''}`}
+    >
+      <div className="font-sans text-[10px] font-medium text-slate-500 dark:text-tactical-label">{label}</div>
+      <div className={`font-mono text-lg font-bold ${tone ?? 'text-tactical-text'}`}>{value}</div>
+    </div>
+  );
+}
+
+function GoldenSignal({
+  label,
+  value,
+  unit,
+  hint,
+  tone,
+  accent,
+  series,
+  dataKey,
+}: {
+  label: string;
+  value: string;
+  unit: string;
+  hint: string;
+  tone: string;
+  accent: string;
+  series: Array<Record<string, number>>;
+  dataKey: string;
+}) {
+  return (
+    <div className="border border-tactical-border bg-tactical-raised rounded-lg px-3 py-2.5">
+      <div className="font-sans text-[10px] font-medium text-slate-500 dark:text-tactical-label">{label}</div>
+      <div className={`font-mono font-bold leading-none mt-1 ${tone}`}>
+        <span className="text-2xl">{value}</span>
+        <span className="text-xs text-tactical-label ml-1">{unit}</span>
+      </div>
+      <div className="font-sans text-[10px] text-slate-500 dark:text-tactical-label mt-1">{hint}</div>
+      <div style={{ width: '100%', height: 36 }} className="mt-2">
+        <ResponsiveContainer>
+          <AreaChart data={series} margin={{ top: 2, right: 0, bottom: 0, left: 0 }}>
+            <Area type="monotone" dataKey={dataKey} stroke={accent} fill={`${accent}22`} strokeWidth={1.5} dot={false} isAnimationActive={false} />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
+const axis = { stroke: '#475569', fontSize: 10, fontFamily: 'monospace' };
+const gridStroke = '#1f2937';
+
+function formatWarning(w: string, t: (k: string, o?: Record<string, unknown>) => string): string {
+  const [code, name] = w.split(':');
+  return t(`editor.warnings.${code}`, { name: name ?? '', defaultValue: w.replace(/_/g, ' ') });
+}
+
+export default function Dashboard({ history, totalCost, costPerHour, successCount = 0, failedCount = 0, provider, warnings, onCostClick }: Props) {
+  const { t } = useTranslation();
+  const latest = history[history.length - 1]?.system;
+  const displayCostPerHour = costPerHour ?? latest?.costPerHour ?? 0;
+  const data = history.map((f) => {
+    // Saturation = how full the busiest resource is (max node utilization).
+    const utils = Object.values(f.nodeMetrics).map((m) => m.utilization || 0);
+    const saturation = utils.length ? Math.max(...utils) : 0;
+    return {
+      t: Math.round(f.time),
+      offered: Math.round(f.system.offeredLoad),
+      throughput: Math.round(f.system.totalThroughput),
+      p50: Math.round(f.system.p50),
+      p95: Math.round(f.system.p95),
+      p99: Math.round(f.system.p99),
+      success: Math.round(f.system.successRate * 1000) / 10,
+      inFlight: Math.round(f.system.inFlightTotal),
+      cost: Math.round(f.system.costPerHour * 100) / 100,
+      errors: Math.round(f.system.failedRate),
+      saturation: Math.round(saturation * 100),
+    };
+  });
+
+  const successTone = (latest?.successRate ?? 1) >= SLO_SUCCESS ? 'text-signal-green' : 'text-signal-red';
+  const p95Tone = (latest?.p95 ?? 0) <= SLO_P95_MS ? 'text-signal-green' : 'text-signal-amber';
+  const errorBudgetUsed = latest ? Math.min(100, ((1 - latest.successRate) / (1 - SLO_SUCCESS)) * 100) : 0;
+
+  // --- Four Golden Signals (Google SRE) ---
+  const latency = Math.round(latest?.p95 ?? 0);
+  const traffic = Math.round(latest?.totalThroughput ?? 0);
+  const errors = Math.round(latest?.failedRate ?? 0);
+  const saturationPct = data[data.length - 1]?.saturation ?? 0;
+
+  const errorTone = (latest?.successRate ?? 1) >= SLO_SUCCESS ? 'text-signal-green' : 'text-signal-red';
+  const saturationTone = saturationPct >= 100 ? 'text-signal-red' : saturationPct >= 80 ? 'text-signal-amber' : 'text-signal-green';
+
+  return (
+    <div className="space-y-4">
+      {/* Four Golden Signals (Google SRE) */}
+      <div>
+        <div className="font-sans text-[11px] font-medium text-slate-600 dark:text-signal-amber mb-2">
+          {t('editor.dashboard.golden_title', { defaultValue: 'Four Golden Signals' })}
+        </div>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+          <GoldenSignal
+            label={t('editor.dashboard.golden.latency', { defaultValue: 'Latency' })}
+            value={`${latency}`}
+            unit="ms p95"
+            hint={t('editor.dashboard.golden.latency_hint', { defaultValue: 'How long requests take' })}
+            tone={p95Tone}
+            accent="#eab308"
+            series={data}
+            dataKey="p95"
+          />
+          <GoldenSignal
+            label={t('editor.dashboard.golden.traffic', { defaultValue: 'Traffic' })}
+            value={`${traffic}`}
+            unit="req/s"
+            hint={t('editor.dashboard.golden.traffic_hint', { defaultValue: 'Demand on the system' })}
+            tone="text-signal-cyan"
+            accent="#06b6d4"
+            series={data}
+            dataKey="throughput"
+          />
+          <GoldenSignal
+            label={t('editor.dashboard.golden.errors', { defaultValue: 'Errors' })}
+            value={`${errors}`}
+            unit="/s"
+            hint={t('editor.dashboard.golden.errors_hint', { defaultValue: 'Failed requests' })}
+            tone={errorTone}
+            accent="#ef4444"
+            series={data}
+            dataKey="errors"
+          />
+          <GoldenSignal
+            label={t('editor.dashboard.golden.saturation', { defaultValue: 'Saturation' })}
+            value={`${saturationPct}`}
+            unit="%"
+            hint={t('editor.dashboard.golden.saturation_hint', { defaultValue: 'Busiest resource load' })}
+            tone={saturationTone}
+            accent="#a855f7"
+            series={data}
+            dataKey="saturation"
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 gap-2">
+        <Stat label={t('editor.dashboard.offered')} value={`${Math.round(latest?.offeredLoad ?? 0)}/s`} />
+        <Stat label={t('editor.dashboard.throughput')} value={`${Math.round(latest?.totalThroughput ?? 0)}/s`} tone="text-signal-green" />
+        <Stat label={t('editor.dashboard.success')} value={`${((latest?.successRate ?? 1) * 100).toFixed(1)}%`} tone={successTone} />
+        <Stat label={t('editor.dashboard.p95')} value={`${Math.round(latest?.p95 ?? 0)}ms`} tone={p95Tone} />
+        <Stat label={t('editor.dashboard.success_total', { defaultValue: 'Successful reqs' })} value={fmtCount(successCount)} tone="text-signal-green" title={t('editor.dashboard.success_total_hint', { defaultValue: 'Total requests served OK this run' })} />
+        <Stat label={t('editor.dashboard.failed_total', { defaultValue: 'Failed reqs' })} value={fmtCount(failedCount)} tone={failedCount >= 1 ? 'text-signal-red' : 'text-tactical-text'} title={t('editor.dashboard.failed_total_hint', { defaultValue: 'Total requests failed/dropped this run' })} />
+        <Stat label={t('editor.dashboard.in_flight')} value={`${Math.round(latest?.inFlightTotal ?? 0)}`} />
+        <Stat label={t('editor.dashboard.cost', { provider: providerLabel(provider) })} value={`$${displayCostPerHour.toFixed(2)}/h`} tone="text-signal-cyan" onClick={onCostClick} title={t('editor.bill.open_hint')} />
+      </div>
+
+      {/* Error budget bar */}
+      <div>
+        <div className="flex justify-between font-sans text-[10px] font-medium text-slate-500 dark:text-tactical-label mb-1">
+          <span>{t('editor.dashboard.error_budget', { slo: SLO_SUCCESS * 100 })}</span>
+          <span>{errorBudgetUsed.toFixed(0)}%</span>
+        </div>
+        <div className="h-2 bg-tactical-line overflow-hidden">
+          <div
+            className="h-full transition-all"
+            style={{ width: `${errorBudgetUsed}%`, backgroundColor: errorBudgetUsed >= 100 ? '#ef4444' : errorBudgetUsed >= 70 ? '#eab308' : '#22c55e' }}
+          />
+        </div>
+      </div>
+
+      {warnings.length > 0 && (
+        <div className="border border-signal-amber/50 bg-signal-amber/10 rounded-lg p-2 font-sans text-[11px] text-signal-amber space-y-0.5">
+          {warnings.slice(0, 6).map((w) => (
+            <div key={w}>⚠ {formatWarning(w, t)}</div>
+          ))}
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <ChartCard title={t('editor.dashboard.chart_throughput')}>
+          <AreaChart data={data}>
+            <CartesianGrid stroke={gridStroke} strokeDasharray="3 3" />
+            <XAxis dataKey="t" {...axis} />
+            <YAxis {...axis} />
+            <Tooltip contentStyle={tooltipStyle} />
+            <Area type="monotone" dataKey="offered" stroke="#64748b" fill="#64748b22" />
+            <Area type="monotone" dataKey="throughput" stroke="#22c55e" fill="#22c55e33" />
+          </AreaChart>
+        </ChartCard>
+
+        <ChartCard title={t('editor.dashboard.chart_latency')}>
+          <LineChart data={data}>
+            <CartesianGrid stroke={gridStroke} strokeDasharray="3 3" />
+            <XAxis dataKey="t" {...axis} />
+            <YAxis {...axis} />
+            <Tooltip contentStyle={tooltipStyle} />
+            <Line type="monotone" dataKey="p50" stroke="#06b6d4" dot={false} />
+            <Line type="monotone" dataKey="p95" stroke="#eab308" dot={false} />
+            <Line type="monotone" dataKey="p99" stroke="#ef4444" dot={false} />
+          </LineChart>
+        </ChartCard>
+
+        <ChartCard title={t('editor.dashboard.chart_success')}>
+          <LineChart data={data}>
+            <CartesianGrid stroke={gridStroke} strokeDasharray="3 3" />
+            <XAxis dataKey="t" {...axis} />
+            <YAxis yAxisId="l" domain={[0, 100]} {...axis} />
+            <YAxis yAxisId="r" orientation="right" {...axis} />
+            <Tooltip contentStyle={tooltipStyle} />
+            <Line yAxisId="l" type="monotone" dataKey="success" stroke="#22c55e" dot={false} />
+            <Line yAxisId="r" type="monotone" dataKey="inFlight" stroke="#a855f7" dot={false} />
+          </LineChart>
+        </ChartCard>
+      </div>
+
+      <div className="font-sans text-[11px] text-slate-500 dark:text-tactical-label">
+        {t('editor.dashboard.accumulated_cost')} <span className="font-mono text-signal-cyan">${totalCost.toFixed(4)}</span>
+      </div>
+    </div>
+  );
+}
+
+const tooltipStyle = {
+  background: '#0f172a',
+  border: '1px solid #334155',
+  fontFamily: 'monospace',
+  fontSize: 11,
+};
+
+function ChartCard({ title, children }: { title: string; children: React.ReactElement }) {
+  return (
+    <div className="border border-tactical-border bg-tactical-surface rounded-lg p-2">
+      <div className="font-sans text-[10px] font-medium text-slate-500 dark:text-tactical-label mb-1">{title}</div>
+      <div style={{ width: '100%', height: 160 }}>
+        <ResponsiveContainer>{children}</ResponsiveContainer>
+      </div>
+    </div>
+  );
+}

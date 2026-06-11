@@ -1,0 +1,137 @@
+import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { Gamepad2, Clock, Activity, Users, Flag, Layers, Hammer, Lock } from 'lucide-react';
+import { useGameContext } from './GameContext';
+import GameAnnouncement from './GameAnnouncement';
+
+function fmtClock(totalSec: number): string {
+  const s = Math.max(0, Math.floor(totalSec));
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${m}:${r.toString().padStart(2, '0')}`;
+}
+
+/**
+ * Match status bar shown above the canvas in game mode: live status, countdown
+ * to start, elapsed/remaining match time, broadcast traffic and player count.
+ */
+export default function GameBanner() {
+  const { t } = useTranslation();
+  const game = useGameContext();
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 500);
+    return () => clearInterval(id);
+  }, []);
+
+  if (!game?.state) return null;
+  const st = game.state;
+  const serverNow = now + game.serverOffsetMs;
+  const phase = st.phase ?? 'lobby';
+  const isLive = phase === 'round';
+  const isBuild = phase === 'interval' || phase === 'lobby';
+
+  let timeLabel = '';
+  let timeValue = '';
+  if (isLive) {
+    const endsMs = st.round_ends_at ? new Date(st.round_ends_at).getTime() : null;
+    const startedMs = st.round_started_at ? new Date(st.round_started_at).getTime() : null;
+    if (endsMs) {
+      timeLabel = t('editor.game.round_time_left', { defaultValue: 'Round time left' });
+      timeValue = fmtClock((endsMs - serverNow) / 1000);
+    } else {
+      timeLabel = t('editor.game.elapsed', { defaultValue: 'Elapsed' });
+      timeValue = startedMs ? fmtClock((serverNow - startedMs) / 1000) : '0:00';
+    }
+  } else if (phase === 'lobby') {
+    const startsMs = st.starts_at ? new Date(st.starts_at).getTime() : null;
+    timeLabel = t('editor.game.starts_in', { defaultValue: 'Starts in' });
+    timeValue = startsMs ? fmtClock((startsMs - serverNow) / 1000) : '--:--';
+  } else if (phase === 'interval') {
+    timeLabel = t('editor.game.status', { defaultValue: 'Status' });
+    timeValue = t('editor.game.build_phase', { defaultValue: 'Build phase' });
+  } else {
+    timeLabel = t('editor.game.status', { defaultValue: 'Status' });
+    timeValue = t('editor.game.ended', { defaultValue: 'Ended' });
+  }
+
+  const phaseTone = isLive
+    ? 'text-signal-green border-signal-green'
+    : phase === 'ended'
+    ? 'text-signal-red border-signal-red'
+    : 'text-signal-amber border-signal-amber';
+
+  const phaseName = isLive
+    ? t('editor.game.live', { defaultValue: 'Live' })
+    : phase === 'interval'
+    ? t('editor.game.build', { defaultValue: 'Build' })
+    : phase === 'ended'
+    ? t('editor.game.ended', { defaultValue: 'Ended' })
+    : t('editor.game.lobby', { defaultValue: 'Lobby' });
+
+  return (
+    <>
+    <GameAnnouncement />
+    <div className="tactical-panel p-3 mb-3 flex flex-wrap items-center gap-x-6 gap-y-2 font-sans text-xs">
+      <div className="flex items-center gap-2 text-signal-cyan font-semibold">
+        <Gamepad2 className="w-4 h-4" />
+        {t('editor.game.mode', { defaultValue: 'Game mode' })}
+        {st.name && <span className="text-tactical-text font-normal">· {st.name}</span>}
+      </div>
+
+      <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full border ${phaseTone}`}>
+        {phase === 'ended' ? <Flag className="w-3.5 h-3.5" /> : isLive ? <Activity className="w-3.5 h-3.5" /> : <Hammer className="w-3.5 h-3.5" />}
+        {phaseName}
+      </div>
+
+      {(st.total_rounds ?? 0) > 0 && (
+        <div className="flex items-center gap-1.5 text-tactical-dim">
+          <Layers className="w-3.5 h-3.5" />
+          <span className="text-tactical-label">{t('editor.game.round', { defaultValue: 'Round' })}:</span>
+          <span className="text-tactical-text font-bold tabular-nums">
+            {Math.max(isLive ? st.current_round : st.current_round + (phase === 'interval' ? 1 : 0), 0)}/{st.total_rounds}
+          </span>
+        </div>
+      )}
+
+      <div className="flex items-center gap-1.5 text-tactical-dim">
+        <Clock className="w-3.5 h-3.5" />
+        <span className="text-tactical-label">{timeLabel}:</span>
+        <span className="text-tactical-text font-bold tabular-nums">{timeValue}</span>
+      </div>
+
+      <div className="flex items-center gap-1.5 text-tactical-dim">
+        <Activity className="w-3.5 h-3.5" />
+        <span className="text-tactical-label">{t('editor.game.traffic', { defaultValue: 'Traffic' })}:</span>
+        <span className="text-tactical-text">{st.load_profile?.type ?? 'constant'}</span>
+      </div>
+
+      <div className="flex items-center gap-1.5 text-tactical-dim">
+        <Users className="w-3.5 h-3.5" />
+        <span className="text-tactical-text">{st.player_count}</span>
+        <span className="text-tactical-label">{t('editor.game.players', { defaultValue: 'Players' })}</span>
+      </div>
+
+      <div className="flex items-center gap-1.5 ml-auto text-tactical-dim">
+        <span className="text-tactical-label">{t('editor.game.your_score', { defaultValue: 'Your score' })}:</span>
+        <span className="text-signal-green font-bold tabular-nums">{Math.round(st.my_score)}</span>
+      </div>
+    </div>
+
+    {/* Frozen-canvas indicator while a round is live */}
+    {isLive && (
+      <div className="mb-3 flex items-center gap-2 rounded-md border border-signal-amber/50 bg-signal-amber/5 px-3 py-2 font-sans text-xs text-signal-amber">
+        <Lock className="w-3.5 h-3.5 shrink-0" />
+        {t('editor.game.round_locked', { defaultValue: 'Round in progress — your architecture is locked. Make changes during the build phase.' })}
+      </div>
+    )}
+    {isBuild && phase === 'interval' && (
+      <div className="mb-3 flex items-center gap-2 rounded-md border border-signal-cyan/50 bg-signal-cyan/5 px-3 py-2 font-sans text-xs text-signal-cyan">
+        <Hammer className="w-3.5 h-3.5 shrink-0" />
+        {t('editor.game.build_now', { defaultValue: 'Build phase — refine your architecture before the next round starts.' })}
+      </div>
+    )}
+    </>
+  );
+}

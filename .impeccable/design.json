@@ -1,0 +1,247 @@
+{
+  "meta": {
+    "name": "System Design Lab",
+    "description": "Visual distributed systems simulator for deep technical learning",
+    "northStar": "The Oscilloscope — measurement instrument, data IS the UI",
+    "register": "product",
+    "personality": ["Precise", "Serious", "Expert"]
+  },
+  "colorMeta": {
+    "strategy": "restrained",
+    "mode": "dark",
+    "antiReferences": ["corporate productivity tools", "cyberpunk HUD"],
+    "roles": {
+      "bg-void": {
+        "hex": "#0a0a0b",
+        "name": "Absolute Black",
+        "note": "App background. Deepest surface. Nothing below this."
+      },
+      "surface-instrument": {
+        "hex": "#101012",
+        "name": "Instrument Panel",
+        "note": "All panel/card surfaces. Primary reading surface."
+      },
+      "surface-raised": {
+        "hex": "#16161a",
+        "name": "Lifted Carbon",
+        "note": "Hover states, elevated cells, raised elements."
+      },
+      "border-hairline": {
+        "hex": "#26262b",
+        "name": "Graphite Hairline",
+        "note": "ALL borders. Every panel edge and separator."
+      },
+      "line-divider": {
+        "hex": "#2f2f36",
+        "name": "Deep Slate Divider",
+        "note": "Internal dividers, progress bar tracks."
+      },
+      "ink-muted": {
+        "hex": "#8a909c",
+        "name": "Slate Whisper",
+        "note": ".label-mono eyebrows, help text, annotations only."
+      },
+      "ink-dim": {
+        "hex": "#aab0bb",
+        "name": "Pale Slate",
+        "note": "Secondary text, ghost button labels, inactive states."
+      },
+      "ink-primary": {
+        "hex": "#e5e7eb",
+        "name": "Signal White",
+        "note": "All metric values, node labels, active content."
+      },
+      "signal-healthy": {
+        "hex": "#34d399",
+        "name": "Throughput Green",
+        "note": "SEMANTIC: healthy throughput, success, primary action border."
+      },
+      "signal-warning": {
+        "hex": "#d9a441",
+        "name": "Warning Gold",
+        "note": "SEMANTIC: elevated load, warning threshold, half-open circuit breaker."
+      },
+      "signal-error": {
+        "hex": "#e5645f",
+        "name": "Error Crimson",
+        "note": "SEMANTIC: errors, failures, saturated nodes, destructive actions."
+      },
+      "signal-info": {
+        "hex": "#56b6c8",
+        "name": "Telemetry Cyan",
+        "note": "SEMANTIC: p95/p99 latency, cost values, selection highlights."
+      },
+      "canvas-light": {
+        "hex": "#f8fafc",
+        "name": "Paper White",
+        "note": "Light mode bg only. Not used in primary dark experience."
+      }
+    },
+    "tonalRamps": {
+      "neutral": [
+        "#0a0a0b",
+        "#101012",
+        "#16161a",
+        "#26262b",
+        "#2f2f36",
+        "#8a909c",
+        "#aab0bb",
+        "#e5e7eb"
+      ],
+      "signal-healthy": [
+        "#0d2e22",
+        "#1a4d38",
+        "#226b4d",
+        "#2a8862",
+        "#34a879",
+        "#34d399",
+        "#6fe4b8",
+        "#c1f7e6"
+      ],
+      "signal-warning": [
+        "#2e1f0a",
+        "#4d3512",
+        "#7a5420",
+        "#a87030",
+        "#d9a441",
+        "#e6be72",
+        "#f0d4a0",
+        "#faebd3"
+      ],
+      "signal-error": [
+        "#2e100f",
+        "#52201f",
+        "#7a302e",
+        "#a84240",
+        "#d05553",
+        "#e5645f",
+        "#ef9490",
+        "#fad3d2"
+      ],
+      "signal-info": [
+        "#0b1e24",
+        "#123340",
+        "#1c4e5e",
+        "#2a707e",
+        "#3c94a0",
+        "#56b6c8",
+        "#88d0db",
+        "#c4edf3"
+      ]
+    }
+  },
+  "typographyMeta": {
+    "uiFont": "Inter",
+    "metricFont": "JetBrains Mono",
+    "rationale": "Sans for UI chrome (labels, buttons, panel headers). Mono for live data (every measurement, rate, latency). The split is semantic: mono = measurement, sans = label.",
+    "scales": {
+      "label-mono": {
+        "fontFamily": "Inter, system-ui, sans-serif",
+        "fontSize": "11px",
+        "fontWeight": 500,
+        "lineHeight": 1.2,
+        "letterSpacing": "0.08em",
+        "textTransform": "uppercase",
+        "color": "ink-muted"
+      },
+      "node-header": {
+        "fontFamily": "Inter, system-ui, sans-serif",
+        "fontSize": "13px",
+        "fontWeight": 700,
+        "lineHeight": 1.4,
+        "letterSpacing": "-0.01em",
+        "color": "ink-primary"
+      },
+      "body": {
+        "fontFamily": "Inter, system-ui, sans-serif",
+        "fontSize": "13px",
+        "fontWeight": 400,
+        "lineHeight": 1.5,
+        "color": "ink-dim"
+      },
+      "metric": {
+        "fontFamily": "JetBrains Mono, Menlo, monospace",
+        "fontSize": "11px",
+        "fontWeight": 500,
+        "lineHeight": 1.4
+      },
+      "metric-large": {
+        "fontFamily": "JetBrains Mono, Menlo, monospace",
+        "fontSize": "13px",
+        "fontWeight": 500,
+        "lineHeight": 1.3
+      }
+    }
+  },
+  "shadows": {},
+  "elevationSystem": "tonal-only",
+  "elevationNote": "Dark mode: NO box-shadow on any panel or card. Depth via tonal layers (bg-void → surface-instrument → surface-raised). Hairline borders define edges. Light mode only: card-shadow (0 1px 2px rgba(15,23,42,0.04), 0 2px 8px rgba(15,23,42,0.06)).",
+  "motion": {
+    "durationFast": "150ms",
+    "durationBase": "300ms",
+    "easeBase": "ease-out",
+    "transitions": {
+      "buttonHover": "background 0.15s, color 0.15s",
+      "utilizationBar": "width 0.3s ease-out, background 0.3s ease-out",
+      "buttonActive": "scale(0.98)"
+    },
+    "reducedMotion": "@media (prefers-reduced-motion: reduce) — instant transitions, no transforms"
+  },
+  "breakpoints": {
+    "mobile": "640px",
+    "tablet": "768px",
+    "desktop": "1024px",
+    "wide": "1280px"
+  },
+  "rounded": {
+    "none": "0px",
+    "sm": "2px",
+    "md": "6px",
+    "lg": "8px",
+    "xl": "12px",
+    "full": "9999px",
+    "nodeCard": "0px"
+  },
+  "spacing": {
+    "xs": "4px",
+    "sm": "8px",
+    "md": "12px",
+    "lg": "16px",
+    "xl": "24px",
+    "2xl": "32px"
+  },
+  "components": {
+    "panel": {
+      "html": "<div class=\"ds-panel\">\n  <div class=\"ds-panel-header\">Panel Title</div>\n  <div class=\"ds-panel-body\">Content here</div>\n</div>",
+      "css": ".ds-panel {\n  background: #101012;\n  border: 1px solid #26262b;\n  border-radius: 12px;\n  overflow: hidden;\n}\n.ds-panel-header {\n  padding: 12px 16px;\n  border-bottom: 1px solid #26262b;\n  font-family: 'Inter', system-ui, sans-serif;\n  font-size: 11px;\n  font-weight: 500;\n  text-transform: uppercase;\n  letter-spacing: 0.08em;\n  color: #8a909c;\n}\n.ds-panel-body {\n  padding: 16px;\n  color: #e5e7eb;\n  font-family: 'Inter', system-ui, sans-serif;\n  font-size: 13px;\n}"
+    },
+    "button-primary": {
+      "html": "<button class=\"ds-btn-primary\">\n  <svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"currentColor\"><path d=\"M8 5v14l11-7z\"/></svg>\n  Run\n</button>",
+      "css": ".ds-btn-primary {\n  display: inline-flex;\n  align-items: center;\n  gap: 6px;\n  background: transparent;\n  border: 1px solid #34d399;\n  color: #34d399;\n  font-family: 'Inter', system-ui, sans-serif;\n  font-size: 13px;\n  font-weight: 500;\n  padding: 6px 14px;\n  border-radius: 6px;\n  cursor: pointer;\n  transition: background 0.15s, color 0.15s;\n}\n.ds-btn-primary:hover {\n  background: rgba(52, 211, 153, 0.1);\n}\n.ds-btn-primary:focus-visible {\n  outline: 2px solid #34d399;\n  outline-offset: 2px;\n}\n.ds-btn-primary:active {\n  background: rgba(52, 211, 153, 0.2);\n  transform: scale(0.98);\n}"
+    },
+    "button-ghost": {
+      "html": "<button class=\"ds-btn-ghost\">Export</button>",
+      "css": ".ds-btn-ghost {\n  display: inline-flex;\n  align-items: center;\n  gap: 6px;\n  background: transparent;\n  border: 1px solid #26262b;\n  color: #aab0bb;\n  font-family: 'Inter', system-ui, sans-serif;\n  font-size: 13px;\n  font-weight: 500;\n  padding: 6px 14px;\n  border-radius: 6px;\n  cursor: pointer;\n  transition: border-color 0.15s, color 0.15s, background 0.15s;\n}\n.ds-btn-ghost:hover {\n  border-color: #8a909c;\n  color: #e5e7eb;\n  background: #16161a;\n}\n.ds-btn-ghost:focus-visible {\n  outline: 2px solid #56b6c8;\n  outline-offset: 2px;\n}"
+    },
+    "button-danger": {
+      "html": "<button class=\"ds-btn-danger\">Delete</button>",
+      "css": ".ds-btn-danger {\n  display: inline-flex;\n  align-items: center;\n  gap: 6px;\n  background: transparent;\n  border: 1px solid #e5645f;\n  color: #e5645f;\n  font-family: 'Inter', system-ui, sans-serif;\n  font-size: 13px;\n  font-weight: 500;\n  padding: 6px 14px;\n  border-radius: 6px;\n  cursor: pointer;\n  transition: background 0.15s;\n}\n.ds-btn-danger:hover {\n  background: rgba(229, 100, 95, 0.1);\n}\n.ds-btn-danger:focus-visible {\n  outline: 2px solid #e5645f;\n  outline-offset: 2px;\n}"
+    },
+    "label-mono": {
+      "html": "<span class=\"ds-label-mono\">Bottlenecks</span>",
+      "css": ".ds-label-mono {\n  font-family: 'Inter', system-ui, sans-serif;\n  font-size: 11px;\n  font-weight: 500;\n  text-transform: uppercase;\n  letter-spacing: 0.08em;\n  line-height: 1.2;\n  color: #8a909c;\n}"
+    },
+    "metric-row": {
+      "html": "<div class=\"ds-metric-row\">\n  <span class=\"ds-metric-label\">Throughput</span>\n  <span class=\"ds-metric-value ds-metric-green\">342/s</span>\n</div>",
+      "css": ".ds-metric-row {\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n  gap: 8px;\n  font-family: 'JetBrains Mono', Menlo, monospace;\n  font-size: 11px;\n  line-height: 1.4;\n}\n.ds-metric-label { color: #8a909c; }\n.ds-metric-value { color: #e5e7eb; font-weight: 500; }\n.ds-metric-green { color: #34d399; }\n.ds-metric-amber { color: #d9a441; }\n.ds-metric-red { color: #e5645f; }\n.ds-metric-cyan { color: #56b6c8; }"
+    },
+    "sim-node": {
+      "html": "<div class=\"ds-simnode ds-simnode-api\">\n  <div class=\"ds-simnode-header\">\n    <svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><rect x=\"2\" y=\"3\" width=\"20\" height=\"14\" rx=\"2\"/><line x1=\"8\" y1=\"21\" x2=\"16\" y2=\"21\"/><line x1=\"12\" y1=\"17\" x2=\"12\" y2=\"21\"/></svg>\n    <span>API Server</span>\n    <span class=\"ds-node-replicas\">×3</span>\n  </div>\n  <div class=\"ds-simnode-metrics\">\n    <div class=\"ds-metric-row\"><span class=\"ds-metric-label\">In</span><span class=\"ds-metric-value ds-metric-amber\">320/s</span></div>\n    <div class=\"ds-metric-row\"><span class=\"ds-metric-label\">Out</span><span class=\"ds-metric-value ds-metric-green\">318/s</span></div>\n    <div class=\"ds-metric-row\"><span class=\"ds-metric-label\">P95</span><span class=\"ds-metric-value ds-metric-cyan\">42ms</span></div>\n  </div>\n  <div class=\"ds-simnode-util\">\n    <div class=\"ds-simnode-util-bar\" style=\"width:65%;background:#22c55e\"></div>\n  </div>\n</div>",
+      "css": ".ds-simnode {\n  position: relative;\n  min-width: 190px;\n  padding: 10px 12px 8px;\n  border: 2px solid #a855f7;\n  background: #101012;\n  font-family: 'Inter', system-ui, sans-serif;\n}\n.ds-simnode-api { border-color: #a855f7; }\n.ds-simnode-header {\n  display: flex;\n  align-items: center;\n  gap: 6px;\n  font-size: 13px;\n  font-weight: 700;\n  color: #fff;\n  letter-spacing: -0.01em;\n}\n.ds-node-replicas {\n  margin-left: auto;\n  padding: 2px 4px;\n  background: #2f2f36;\n  color: #67e8f9;\n  font-family: 'JetBrains Mono', Menlo, monospace;\n  font-size: 10px;\n  font-weight: 700;\n  border-radius: 2px;\n}\n.ds-simnode-metrics {\n  margin-top: 8px;\n  display: flex;\n  flex-direction: column;\n  gap: 2px;\n}\n.ds-simnode-util {\n  margin-top: 6px;\n  height: 6px;\n  background: #2f2f36;\n  overflow: hidden;\n}\n.ds-simnode-util-bar {\n  height: 100%;\n  transition: width 0.3s ease-out, background 0.3s ease-out;\n}"
+    },
+    "util-bar": {
+      "html": "<div class=\"ds-util-container\">\n  <div class=\"ds-util-bar\" style=\"width:78%;background:#eab308\"></div>\n</div>",
+      "css": ".ds-util-container {\n  height: 6px;\n  background: #2f2f36;\n  overflow: hidden;\n  border-radius: 0;\n}\n.ds-util-bar {\n  height: 100%;\n  transition: width 0.3s ease-out, background 0.3s ease-out;\n}"
+    }
+  }
+}
