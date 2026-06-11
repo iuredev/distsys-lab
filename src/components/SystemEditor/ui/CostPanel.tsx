@@ -31,7 +31,8 @@ export default function CostPanel({ nodes, metrics, provider, totalCost, onClose
       const m = metrics[id];
       const servers = m?.servers ?? Math.max(1, Math.round(config.concurrency * config.replicas));
       const arrival = m?.arrivalRate ?? 0;
-      const cost = estimateCostFromMetrics(config.kind, servers, arrival, config.replicaCount, provider, config.serviceTimeMs);
+      const replicas = m?.replicas ?? config.replicas;
+      const cost = estimateCostFromMetrics(config.kind, servers, arrival, config.replicaCount, provider, config.serviceTimeMs, config.instanceType, replicas);
       if (cost <= 0) return;
       const product = productName(config.kind, provider);
       const cur = map.get(product) ?? { product, cost: 0, count: 0 };

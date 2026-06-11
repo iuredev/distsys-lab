@@ -19,7 +19,7 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { useTranslation } from 'react-i18next';
-import { Play, Pause, SkipForward, RotateCcw, Download, Upload, Settings2, Copy, Unplug, Zap, Trash2, ArrowDownUp, ArrowLeftRight, Undo2, Redo2, Plus, SlidersHorizontal, Boxes, type LucideIcon } from 'lucide-react';
+import { Play, Pause, SkipForward, RotateCcw, Download, Upload, Settings2, Copy, Unplug, Zap, Trash2, ArrowDownUp, ArrowLeftRight, Undo2, Redo2, Plus, SlidersHorizontal, Boxes, Bookmark, BookOpen, type LucideIcon } from 'lucide-react';
 
 import {
   NodeConfig,
@@ -38,7 +38,7 @@ import InspectorPanel from './ui/InspectorPanel';
 import CostPanel from './ui/CostPanel';
 import Dashboard from './ui/Dashboard';
 import ScenarioBar from './ui/ScenarioBar';
-import { parseDesign, serializeDesign, SerializedNode } from './ui/persistence';
+import { parseDesign, serializeDesign, SerializedNode, DesignV2, addSavedDesign, deleteSavedDesign, getSavedDesigns, SavedEntry, MAX_SAVES } from './ui/persistence';
 import { layoutGraph, LayoutDirection } from './ui/autoLayout';
 import { useGameContext } from './game/GameContext';
 import { architectureToRF, rfToArchitecture } from './game/architecture';
@@ -105,23 +105,27 @@ function ContextItem({
 }
 
 function EditorInner({ gameId }: { gameId?: string }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { user } = useAuth();
+
+  const toggleLng = () => {
+    const next = i18n.language === 'pt' ? 'en' : 'pt';
+    i18n.changeLanguage(next);
+    localStorage.setItem('distsys-lab:lng', next);
+  };
   const game = useGameContext();
   const gameState = game?.state ?? null;
   const gameActive = !!gameId && !!game;
   // During a live round players are locked out of editing; they build during
   // intervals (and the lobby). Non-game sessions are always editable.
   const frozen = gameActive && gameState?.phase === 'round';
-  const initial = useMemo(() => presetToRF('three-tier'), []);
-
-  const [nodes, setNodes, onNodesChange] = useNodesState<SimNodeData>(initial.nodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initial.edges);
+  const [nodes, setNodes, onNodesChange] = useNodesState<SimNodeData>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const [running, setRunning] = useState(false);
   const [speed, setSpeed] = useState(2); // ticks per second
-  const [seed, setSeed] = useState(initial.seed);
+  const [seed, setSeed] = useState(42);
 
   const [metrics, setMetrics] = useState<Record<string, SimulationFrame['nodeMetrics'][string]>>({});
   const [history, setHistory] = useState<SimulationFrame[]>([]);
@@ -137,6 +141,12 @@ function EditorInner({ gameId }: { gameId?: string }) {
   const [provider, setProvider] = useState<CloudProvider>('aws');
   const [chaos, setChaos] = useState<ChaosEvent[]>([]);
   const [importError, setImportError] = useState<string | null>(null);
+
+  // Saved designs panel
+  const [showSaves, setShowSaves] = useState(false);
+  const [saveName, setSaveName] = useState('');
+  const [savedDesigns, setSavedDesigns] = useState<SavedEntry[]>(() => getSavedDesigns());
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const [menu, setMenu] = useState<{ kind: 'node' | 'edge' | 'pane'; id: string; x: number; y: number } | null>(null);
   const [showBill, setShowBill] = useState(false);
@@ -683,6 +693,57 @@ function EditorInner({ gameId }: { gameId?: string }) {
     [setEdges, takeSnapshot, isFrozen],
   );
 
+  const handleSaveDesign = useCallback(() => {
+    const sNodes: SerializedNode[] = nodes.map((n) => ({ id: n.id, position: n.position, config: n.data.config }));
+    const sEdges = edges.map((e) => ({ id: e.id, source: e.source, target: e.target, sourceHandle: e.sourceHandle, targetHandle: e.targetHandle, weight: e.data?.weight as number | undefined }));
+    const design: DesignV2 = { version: '2.0', seed, profileType, chaos, nodes: sNodes, edges: sEdges };
+    const label = saveName.trim() || `Design ${new Date().toLocaleDateString()}`;
+    const result = addSavedDesign(label, design);
+    if (result.ok) {
+      setSavedDesigns(getSavedDesigns());
+      setSaveName('');
+      setSaveError(null);
+    } else {
+      setSaveError(result.error ?? 'Failed to save.');
+    }
+  }, [nodes, edges, seed, profileType, chaos, saveName]);
+
+  const handleLoadSaved = useCallback((entry: SavedEntry) => {
+    try {
+      const design = parseDesign(entry.serialized);
+      takeSnapshot();
+      const rfNodes: RFNode[] = design.nodes.map((n) => ({
+        id: n.id,
+        type: n.config.kind,
+        position: n.position,
+        data: { config: n.config },
+      }));
+      setRunning(false);
+      setNodes(rfNodes);
+      setEdges(design.edges.map((ed) => ({ id: ed.id, source: ed.source, target: ed.target, sourceHandle: ed.sourceHandle ?? 'bottom', targetHandle: ed.targetHandle ?? 'top', animated: true, style: { strokeWidth: 2.5 }, data: { weight: ed.weight ?? 1 } })));
+      setSeed(design.seed);
+      setProfileType(design.profileType);
+      setChaos(design.chaos);
+      setSelectedId(null);
+      simRef.current?.reset(design.seed);
+      setMetrics({});
+      setHistory([]);
+      setTotalCost(0); setSuccessCount(0); setFailedCount(0);
+      setCurrentTick(0);
+      setWarnings([]);
+      setSaveError(null);
+      setShowSaves(false);
+      window.requestAnimationFrame(() => rf.fitView({ padding: 0.4, duration: 400 }));
+    } catch {
+      setSaveError('Failed to load design.');
+    }
+  }, [setNodes, setEdges, takeSnapshot, rf]);
+
+  const handleDeleteSaved = useCallback((id: string) => {
+    deleteSavedDesign(id);
+    setSavedDesigns(getSavedDesigns());
+  }, []);
+
   const openMenuAt = useCallback((kind: 'node' | 'edge' | 'pane', id: string, event: React.MouseEvent) => {
     event.preventDefault();
     // On touch we replace context menus with the SelectionActionBar / tools sheet.
@@ -739,8 +800,15 @@ function EditorInner({ gameId }: { gameId?: string }) {
   const onConnect = useCallback(
     (params: Connection | Edge) => {
       if (isFrozen()) return;
+      const src = (params as Connection).source;
+      const tgt = (params as Connection).target;
+      if (!src || !tgt) return;
       takeSnapshot();
-      setEdges((eds) => addEdge({ ...params, id: `e-${(params as Edge).source}-${(params as Edge).target}-${Date.now()}`, animated: true, style: { strokeWidth: 2.5 }, data: { weight: 1 } }, eds));
+      setEdges((eds) => {
+        // Reject duplicate source→target regardless of which handles were used.
+        if (eds.some((e) => e.source === src && e.target === tgt)) return eds;
+        return addEdge({ ...params, id: `e-${src}-${tgt}-${Date.now()}`, animated: true, style: { strokeWidth: 2.5 }, data: { weight: 1 } }, eds);
+      });
     },
     [setEdges, takeSnapshot, isFrozen],
   );
@@ -976,7 +1044,7 @@ function EditorInner({ gameId }: { gameId?: string }) {
       const m = metrics[n.id];
       const servers = m?.servers ?? Math.max(1, Math.round(cfg.concurrency * cfg.replicas));
       const arrival = m?.arrivalRate ?? 0;
-      return sum + estimateCostFromMetrics(cfg.kind, servers, arrival, cfg.replicaCount, provider, cfg.serviceTimeMs);
+      return sum + estimateCostFromMetrics(cfg.kind, servers, arrival, cfg.replicaCount, provider, cfg.serviceTimeMs, cfg.instanceType, m?.replicas ?? cfg.replicas);
     }, 0);
   }, [nodes, metrics, provider]);
 
@@ -1042,6 +1110,21 @@ function EditorInner({ gameId }: { gameId?: string }) {
             <span className="font-mono text-[10px] text-tactical-label select-none">
               {nodes.length}<span className="text-tactical-line mx-0.5">n</span>·{edges.length}<span className="text-tactical-line mx-0.5">e</span>
             </span>
+            <button
+              onClick={toggleLng}
+              title={i18n.language === 'pt' ? 'Switch to English' : 'Mudar para Português'}
+              className="font-mono text-[10px] text-tactical-label hover:text-tactical-text transition-colors px-2 py-1 rounded border border-transparent hover:border-tactical-border"
+            >
+              {i18n.language === 'pt' ? 'EN' : 'PT'}
+            </button>
+            <a
+              href="#/guide"
+              title="Reference Guide"
+              className="flex items-center gap-1.5 font-mono text-[10px] text-tactical-label hover:text-tactical-text transition-colors px-2 py-1 rounded border border-transparent hover:border-tactical-border"
+            >
+              <BookOpen className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">{i18n.language === 'pt' ? 'guia' : 'guide'}</span>
+            </a>
           </div>
         </div>
 
@@ -1139,8 +1222,23 @@ function EditorInner({ gameId }: { gameId?: string }) {
               <button onClick={exportDesign} className={`${btn} border-tactical-border text-tactical-dim hover:border-signal-cyan hover:text-signal-cyan`}>
                 <Download className="w-4 h-4" /> {t('editor.buttons.export', { defaultValue: 'Export' })}
               </button>
-              <button onClick={() => fileInputRef.current?.click()} className={`${btn} border-tactical-border text-tactical-dim hover:border-signal-cyan hover:text-signal-cyan`}>
+<button onClick={() => fileInputRef.current?.click()} className={`${btn} border-tactical-border text-tactical-dim hover:border-signal-cyan hover:text-signal-cyan`}>
                 <Upload className="w-4 h-4" /> {t('editor.buttons.import', { defaultValue: 'Import' })}
+              </button>
+
+              <div className="border-l border-tactical-line h-8 mx-1 shrink-0" />
+
+              <button
+                onClick={() => { setShowSaves((s) => !s); setSaveError(null); }}
+                className={`${btn} ${showSaves ? 'border-signal-cyan text-signal-cyan bg-signal-cyan/10' : 'border-tactical-border text-tactical-dim hover:border-signal-cyan hover:text-signal-cyan'}`}
+              >
+                <Bookmark className="w-4 h-4" />
+                {t('editor.buttons.saves', { defaultValue: 'Saves' })}
+                {savedDesigns.length > 0 && (
+                  <span className="font-mono text-[10px] bg-tactical-line text-tactical-text px-1.5 py-0.5 rounded-full">
+                    {savedDesigns.length}/{MAX_SAVES}
+                  </span>
+                )}
               </button>
             </>
           )}
@@ -1171,6 +1269,60 @@ function EditorInner({ gameId }: { gameId?: string }) {
 
         {importError && (
           <div className="bg-signal-red/10 border border-signal-red rounded-lg p-3 text-signal-red font-sans text-sm mb-3">{importError}</div>
+        )}
+
+        {/* Saved designs panel */}
+        {showSaves && !gameActive && (
+          <div className="tactical-panel mb-4">
+            <div className="flex items-center gap-2 px-3 py-2 border-b border-tactical-border">
+              <Bookmark className="w-3.5 h-3.5 text-signal-cyan" />
+              <span className="label-mono">saved designs</span>
+              <span className="font-mono text-[10px] text-tactical-label ml-0.5">({savedDesigns.length}/{MAX_SAVES})</span>
+              <button onClick={() => setShowSaves(false)} className="ml-auto font-mono text-[12px] text-tactical-dim hover:text-tactical-text px-1">×</button>
+            </div>
+            <div className="p-3">
+              <div className="flex items-end gap-2 mb-3">
+                <div className="flex-1">
+                  <div className="label-mono mb-1">name</div>
+                  <input
+                    type="text"
+                    value={saveName}
+                    onChange={(e) => setSaveName(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleSaveDesign(); }}
+                    placeholder={`Design ${savedDesigns.length + 1}`}
+                    className="w-full bg-tactical-raised border border-tactical-border px-2 py-1.5 font-mono text-xs text-tactical-text rounded focus:outline-none focus:border-signal-cyan"
+                  />
+                </div>
+                <button
+                  onClick={handleSaveDesign}
+                  disabled={savedDesigns.length >= MAX_SAVES || nodes.length === 0}
+                  className={`${btn} border-signal-cyan text-signal-cyan hover:bg-signal-cyan/10 disabled:opacity-40 disabled:cursor-not-allowed`}
+                >
+                  <Bookmark className="w-4 h-4" /> Save
+                </button>
+              </div>
+              {saveError && <div className="font-mono text-[11px] text-signal-red mb-2">{saveError}</div>}
+              {nodes.length === 0 && savedDesigns.length === 0 && (
+                <div className="font-mono text-[11px] text-tactical-label text-center py-4">no saved designs · add nodes to the canvas to save</div>
+              )}
+              {savedDesigns.length > 0 && (
+                <div className="space-y-1.5">
+                  {savedDesigns.map((entry) => (
+                    <div key={entry.id} className="flex items-center gap-2 px-3 py-2 bg-tactical-raised border border-tactical-border rounded">
+                      <div className="flex-1 min-w-0">
+                        <div className="font-mono text-xs text-tactical-text truncate">{entry.name}</div>
+                        <div className="font-mono text-[10px] text-tactical-label">{new Date(entry.savedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</div>
+                      </div>
+                      <button onClick={() => handleLoadSaved(entry)} className={`${btn} py-1 text-xs border-signal-cyan text-signal-cyan hover:bg-signal-cyan/10`}>Load</button>
+                      <button onClick={() => handleDeleteSaved(entry.id)} title="Delete" className={`${iconBtn} border-tactical-border text-tactical-dim hover:border-signal-red hover:text-signal-red`}>
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         )}
 
         {/* Scenario controls (admin-driven in game mode, so hidden for players;
@@ -1286,6 +1438,13 @@ function EditorInner({ gameId }: { gameId?: string }) {
               <Background variant={BackgroundVariant.Lines} gap={28} color="#1a1a22" />
             </ReactFlow>
 
+            {nodes.length === 0 && !gameActive && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none select-none" style={{ zIndex: 4 }}>
+                <div className="label-mono mb-1 text-tactical-label">empty canvas</div>
+                <div className="font-mono text-[11px] text-tactical-label opacity-60">drag a component from the palette to start</div>
+              </div>
+            )}
+
             {/* Touch: floating action bar replaces right-click context menus. */}
             {isTouch && selectedId && (
               <SelectionActionBar
@@ -1371,7 +1530,7 @@ function EditorInner({ gameId }: { gameId?: string }) {
                   onClose={() => setShowBill(false)}
                 />
               ) : (
-                <InspectorPanel config={selectedConfig} onChange={patchSelected} onDelete={deleteSelected} canDelete={!selectedConfig?.locked} readOnly={gameActive && selectedConfig?.kind === 'client'} gameMode={gameActive} />
+                <InspectorPanel config={selectedConfig} onChange={patchSelected} onDelete={deleteSelected} canDelete={!selectedConfig?.locked} readOnly={gameActive && selectedConfig?.kind === 'client'} gameMode={gameActive} provider={provider} />
               )}
             </div>
           )}
@@ -1451,6 +1610,43 @@ function EditorInner({ gameId }: { gameId?: string }) {
                 >
                   <div className="p-4 space-y-4">
                     <div>
+                      <div className="font-sans text-[11px] font-medium text-slate-500 dark:text-tactical-label mb-2">Saved Designs ({savedDesigns.length}/{MAX_SAVES})</div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <input
+                          type="text"
+                          value={saveName}
+                          onChange={(e) => setSaveName(e.target.value)}
+                          placeholder="Design name..."
+                          className="flex-1 bg-tactical-raised border border-tactical-border px-2 py-2 font-mono text-sm text-tactical-text rounded focus:outline-none focus:border-signal-cyan"
+                        />
+                        <button
+                          onClick={handleSaveDesign}
+                          disabled={savedDesigns.length >= MAX_SAVES || nodes.length === 0}
+                          className={`${iconBtn} border-signal-cyan text-signal-cyan hover:bg-signal-cyan/10 disabled:opacity-40`}
+                          title="Save design"
+                        >
+                          <Bookmark className="w-4 h-4" />
+                        </button>
+                      </div>
+                      {saveError && <div className="font-mono text-[11px] text-signal-red mb-2">{saveError}</div>}
+                      <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                        {savedDesigns.length === 0 && <div className="font-mono text-[11px] text-tactical-label text-center py-2">no saves yet</div>}
+                        {savedDesigns.map((entry) => (
+                          <div key={entry.id} className="flex items-center gap-2 px-3 py-2 bg-tactical-raised border border-tactical-border rounded">
+                            <div className="flex-1 min-w-0">
+                              <div className="font-mono text-xs text-tactical-text truncate">{entry.name}</div>
+                              <div className="font-mono text-[10px] text-tactical-label">{new Date(entry.savedAt).toLocaleDateString()}</div>
+                            </div>
+                            <button onClick={() => { handleLoadSaved(entry); setSheet(null); }} className={`${btn} py-1 text-xs border-signal-cyan text-signal-cyan`}>Load</button>
+                            <button onClick={() => handleDeleteSaved(entry.id)} className={`${iconBtn} border-tactical-border text-tactical-dim hover:border-signal-red hover:text-signal-red`}>
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
                       <div className="font-sans text-[11px] font-medium text-slate-500 dark:text-tactical-label mb-2">{t('editor.menu.arrange_vertical', { defaultValue: 'Arrange' })}</div>
                       <div className="flex gap-2">
                         <button onClick={() => { applyLayout('vertical'); setSheet(null); }} className={`${btn} flex-1 justify-center border-tactical-border text-tactical-dim`}>
@@ -1495,6 +1691,7 @@ function EditorInner({ gameId }: { gameId?: string }) {
           </>
         )}
       </div>
+
     </MetricsContext.Provider>
   );
 }

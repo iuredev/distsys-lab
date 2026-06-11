@@ -11,6 +11,7 @@ import {
   NodeConfig,
   serverServiceRate,
 } from './types';
+import { INSTANCE_CPU_FACTOR } from './costModel';
 import { Topology } from './topology';
 import { mmcMetrics, QueueMetrics } from './queueing';
 import {
@@ -156,7 +157,9 @@ function processNode(
   nodeById: Map<string, NodeConfig>,
 ): NodeRuntime {
   const replicas = state.replicaOverride.get(node.id) ?? node.replicas;
-  const mu = serverServiceRate(node);
+  const baseMu = serverServiceRate(node);
+  const cpuFactor = node.instanceType ? (INSTANCE_CPU_FACTOR[node.instanceType] ?? 1.0) : 1.0;
+  const mu = baseMu * cpuFactor;
   const servers = Math.max(1, Math.round(node.concurrency * replicas));
 
   // Default branch routing: weighted split (weight=1 on all edges → even split).
@@ -200,6 +203,15 @@ function processNode(
       return base;
     }
 
+    case 'cdn': {
+      const hit = clamp01(node.hitRate ?? 0.85);
+      return capNode(arrival, mu, servers, outgoing, effFail, {
+        terminateProb: hit,
+        cacheHits: 0,
+        cacheMisses: 0,
+      });
+    }
+
     case 'cache': {
       const hit = clamp01(node.hitRate ?? 0.8);
       return capNode(arrival, mu, servers, outgoing, effFail, {
@@ -226,6 +238,27 @@ function processNode(
 
     case 'messageQueue': {
       return queueNode(node, arrival, outgoing, state, effFail);
+    }
+
+    case 'rateLimiter': {
+      const limit = node.rateLimit ?? 100;
+      if ((node.rejectBehavior ?? 'drop') === 'queue') {
+        // Token-bucket queue: burst fills to burstCapacity, drains at rateLimit.
+        // Reuse queueNode by injecting the right knobs.
+        const qNode = { ...node, maxQueue: node.burstCapacity ?? 200, dequeueRate: limit };
+        return queueNode(qNode, arrival, outgoing, state, effFail);
+      }
+      // drop mode: identical to apiGateway rate-limiting.
+      const throttled = Math.max(0, arrival - limit);
+      const admitted = Math.min(arrival, limit);
+      const rt = capNode(admitted, mu, servers, outgoing, effFail, {});
+      rt.arrival = arrival;
+      rt.dropped += throttled;
+      rt.effFailProb = combineFailureProbs(
+        rt.effFailProb,
+        arrival > 0 ? throttled / arrival : 0,
+      );
+      return rt;
     }
 
     case 'circuitBreaker': {
@@ -435,27 +468,30 @@ function balancerBranches(
   if (outgoing.length === 0) return [];
   const strategy = node.strategy ?? 'roundRobin';
 
+  // Deduplicate by target first — parallel edges between same nodes must not
+  // create phantom branches regardless of LB strategy.
+  const unique = Array.from(
+    outgoing.reduce((m, e) => (m.has(e.target) ? m : m.set(e.target, e)), new Map<string, EdgeSpec>()).values()
+  );
+
   if (strategy === 'weighted') {
     const weights = node.weights ?? {};
-    const raw = outgoing.map((e) => Math.max(0, weights[e.target] ?? 1));
+    const raw = unique.map((e) => Math.max(0, weights[e.target] ?? 1));
     const total = raw.reduce((s, w) => s + w, 0) || 1;
-    return outgoing.map((e, i) => ({ edgeId: e.id, target: e.target, prob: raw[i] / total }));
+    return unique.map((e, i) => ({ edgeId: e.id, target: e.target, prob: raw[i] / total }));
   }
 
   if (strategy === 'leastConnections') {
-    // Approximate least-connections by steering away from saturated targets:
-    // weight inversely with the target's effective failure probability + a
-    // capacity-aware term keeps the split balanced under uniform health.
-    const raw = outgoing.map((e) => {
+    const raw = unique.map((e) => {
       const fail = effFail.get(e.target) ?? 0;
       return 1 - 0.9 * fail;
     });
     const total = raw.reduce((s, w) => s + w, 0) || 1;
-    return outgoing.map((e, i) => ({ edgeId: e.id, target: e.target, prob: raw[i] / total }));
+    return unique.map((e, i) => ({ edgeId: e.id, target: e.target, prob: raw[i] / total }));
   }
 
   // roundRobin and hashing both produce an even aggregate split.
-  return outgoing.map((e) => ({ edgeId: e.id, target: e.target, prob: 1 / outgoing.length }));
+  return unique.map((e) => ({ edgeId: e.id, target: e.target, prob: 1 / unique.length }));
 }
 
 function clamp01(x: number): number {
@@ -464,13 +500,22 @@ function clamp01(x: number): number {
   return x;
 }
 
-/** Split outgoing flow using per-edge relative weights (default 1 = even split). */
+/** Split outgoing flow using per-edge relative weights (default 1 = even split).
+ * Parallel edges to the same target are merged (weights summed) so duplicate
+ * handles between the same two nodes don't create phantom traffic splits. */
 function weightedBranches(outgoing: EdgeSpec[]): RouteBranch[] {
   if (outgoing.length === 0) return [];
-  const total = outgoing.reduce((s, e) => s + Math.max(0.001, e.weight ?? 1), 0);
-  return outgoing.map((e) => ({
-    edgeId: e.id,
-    target: e.target,
-    prob: Math.max(0.001, e.weight ?? 1) / total,
+  const merged = new Map<string, { edgeId: string; weight: number }>();
+  for (const e of outgoing) {
+    const w = Math.max(0.001, e.weight ?? 1);
+    const existing = merged.get(e.target);
+    if (existing) existing.weight += w;
+    else merged.set(e.target, { edgeId: e.id, weight: w });
+  }
+  const total = Array.from(merged.values()).reduce((s, v) => s + v.weight, 0);
+  return Array.from(merged.entries()).map(([target, { edgeId, weight }]) => ({
+    edgeId,
+    target,
+    prob: weight / total,
   }));
 }

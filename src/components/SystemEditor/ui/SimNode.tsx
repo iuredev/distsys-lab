@@ -111,6 +111,15 @@ function MetricRow({ label, value, tone }: { label: string; value: string; tone?
 }
 
 function KindExtras({ kind, config, metrics, t }: { kind: string; config: NodeConfig; metrics?: NodeMetrics; t: (k: string) => string }) {
+  if (kind === 'cdn' && metrics) {
+    return (
+      <>
+        <MetricRow label={t('editor.node.hit_s')} value={`${metrics.cacheHits ?? 0}`} tone="text-sky-300" />
+        <MetricRow label={t('editor.node.miss_s')} value={`${metrics.cacheMisses ?? 0}`} tone="text-red-300" />
+        <MetricRow label={t('editor.node.hit_rate')} value={`${Math.round((config.hitRate ?? 0) * 100)}%`} tone="text-sky-400" />
+      </>
+    );
+  }
   if (kind === 'cache' && metrics) {
     return (
       <>
@@ -147,6 +156,19 @@ function KindExtras({ kind, config, metrics, t }: { kind: string; config: NodeCo
   }
   if (kind === 'apiGateway' && metrics) {
     return <MetricRow label={t('editor.node.dropped_s')} value={`${metrics.droppedRate}`} tone="text-orange-300" />;
+  }
+  if (kind === 'rateLimiter' && metrics) {
+    const limit = config.rateLimit ?? 100;
+    const pct = Math.min(100, (metrics.throughput / Math.max(limit, 1)) * 100);
+    return (
+      <>
+        <MetricRow label={t('editor.node.rate_cap')} value={`${Math.round(metrics.throughput)}/${limit}/s`} tone="text-lime-300" />
+        {metrics.droppedRate > 0 && <MetricRow label={t('editor.node.dropped_s')} value={`${metrics.droppedRate}`} tone="text-red-300" />}
+        <div className="mt-1 h-1 bg-tactical-line overflow-hidden">
+          <div className="h-full transition-all duration-300" style={{ width: `${pct}%`, backgroundColor: pct >= 95 ? '#ef4444' : '#84cc16' }} />
+        </div>
+      </>
+    );
   }
   if (kind === 'replicatedDb' && metrics) {
     const rc = Math.max(1, config.replicaCount ?? 3);
@@ -221,24 +243,43 @@ function SimNodeImpl({ id, data, isConnectable, selected }: NodeProps<SimNodeDat
   // How many "stacked card" layers to draw behind the box (capped for sanity).
   const stackLayers = Math.min(3, Math.max(0, replicaCount - 1));
 
+  // Bottleneck highlight — only for nodes that actually queue (not client).
+  const isWarm = config.kind !== 'client' && util >= 0.8 && util < 1.0;
+  const isHot  = config.kind !== 'client' && util >= 1.0;
+  const alertBorder = isHot ? 'border-red-500' : isWarm ? 'border-amber-400' : entry.accent;
+  const alertGlow: React.CSSProperties = isHot
+    ? { boxShadow: '0 0 16px 4px rgba(239,68,68,0.5)'  }
+    : isWarm
+    ? { boxShadow: '0 0 12px 2px rgba(234,179,8,0.4)'  }
+    : {};
+
   return (
     <div className="relative" style={{ minWidth: 190 }}>
-      {/* Stacked cards behind the box visualise multiple replicas. Rendered
-          before the main card so they paint underneath, offset to the corner. */}
+      {/* Stacked cards behind the box visualise multiple replicas. */}
       {Array.from({ length: stackLayers }).map((_, i) => (
         <div
           key={i}
           aria-hidden
-          className={`absolute inset-0 border-2 ${entry.accent} bg-tactical-surface opacity-60`}
+          className={`absolute inset-0 border-2 ${alertBorder} bg-tactical-surface opacity-60`}
           style={{ transform: `translate(${(i + 1) * 4}px, ${(i + 1) * 4}px)` }}
         />
       ))}
 
       <div
-        className={`relative px-3 py-2 border-2 ${entry.accent} bg-tactical-surface ${
+        className={`relative px-3 py-2 border-2 ${alertBorder} bg-tactical-surface transition-[border-color,box-shadow] duration-500 ${
           selected ? 'ring-2 ring-signal-cyan' : ''
         }`}
+        style={alertGlow}
       >
+      {/* Pulsing overlay when warm or saturated */}
+      {(isWarm || isHot) && (
+        <div
+          aria-hidden
+          className="absolute inset-0 pointer-events-none animate-pulse"
+          style={{ backgroundColor: isHot ? 'rgba(239,68,68,0.07)' : 'rgba(234,179,8,0.07)' }}
+        />
+      )}
+
       {HANDLE_SIDES.map(({ id: handleId, position }) => (
         <Handle
           key={handleId}
@@ -252,7 +293,7 @@ function SimNodeImpl({ id, data, isConnectable, selected }: NodeProps<SimNodeDat
       ))}
 
       <div className="flex items-center gap-2 font-sans font-bold text-white tracking-tight text-sm">
-        <Icon className="w-4 h-4 shrink-0" />
+        <Icon className={`w-4 h-4 shrink-0 ${isHot ? 'text-red-400' : isWarm ? 'text-amber-400' : ''}`} />
         {config.locked && (
           <Lock
             className="w-3 h-3 shrink-0 text-signal-amber"
@@ -260,7 +301,10 @@ function SimNodeImpl({ id, data, isConnectable, selected }: NodeProps<SimNodeDat
           />
         )}
         <span className="truncate">{config.label}</span>
-        {replicaCount > 1 && (
+        {isHot && (
+          <span className="ml-auto text-red-400 text-[12px] animate-pulse" title="Saturated — utilization ≥ 100%">⚠</span>
+        )}
+        {!isHot && replicaCount > 1 && (
           <span
             title={t('editor.node.replicas')}
             className="ml-auto flex items-center gap-0.5 px-1 py-0.5 bg-tactical-line text-cyan-300 text-[10px] font-bold rounded-sm"

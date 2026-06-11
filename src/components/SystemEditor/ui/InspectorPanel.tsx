@@ -6,6 +6,7 @@ import { Trash2, Info } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { NodeConfig, NodeKind, nodeCapacity } from '../engine/types';
 import { NODE_CATALOG } from './nodeCatalog';
+import { CloudProvider, INSTANCE_CATALOG, instanceCategory } from '../engine/costModel';
 
 type TFunc = (key: string, opts?: Record<string, unknown>) => string;
 
@@ -61,6 +62,8 @@ interface Props {
    * can never be tuned by players — these sections render locked.
    */
   gameMode?: boolean;
+  /** Active cloud provider — determines which instance type list to show. */
+  provider?: CloudProvider;
 }
 
 function Num({
@@ -135,7 +138,7 @@ function Select<T extends string>({
   );
 }
 
-export default function InspectorPanel({ config, onChange, onDelete, canDelete = true, readOnly = false, gameMode = false }: Props) {
+export default function InspectorPanel({ config, onChange, onDelete, canDelete = true, readOnly = false, gameMode = false, provider = 'aws' }: Props) {
   const { t } = useTranslation();
   // Swallow edits when the node is admin-controlled (e.g. the Users traffic
   // source); the panel still shows the values for context.
@@ -217,6 +220,28 @@ export default function InspectorPanel({ config, onChange, onDelete, canDelete =
           </>
         )}
 
+        {/* Instance type selector — compute / database / cache nodes only */}
+        {instanceCategory(config.kind) !== null && (
+          <>
+            <div className="font-sans text-[11px] font-medium text-slate-600 dark:text-signal-amber mt-1 mb-2">
+              {t('editor.inspector.machine_type_section', { defaultValue: 'Machine type' })}
+            </div>
+            <Select
+              label={t('editor.inspector.instance_type', { defaultValue: 'Instance' })}
+              hint={t('editor.hints.instance_type', { defaultValue: 'Cloud instance type — sets cost per replica directly. Leave on Auto to derive cost from service time.' })}
+              value={config.instanceType ?? ''}
+              options={[
+                { value: '', label: t('editor.inspector.instance_auto', { defaultValue: 'Auto (service-time based)' }) },
+                ...((INSTANCE_CATALOG[instanceCategory(config.kind)!]?.[provider] ?? []).map((s) => ({
+                  value: s.id,
+                  label: `${s.id} · ${s.vcpu} vCPU · ${s.memoryGb} GB · $${s.pricePerHour.toFixed(4)}/hr`,
+                }))),
+              ]}
+              onChange={(v) => handleChange({ instanceType: v || undefined })}
+            />
+          </>
+        )}
+
         {/* Kind-specific controls */}
         {renderKindControls(config, handleChange, t)}
 
@@ -272,6 +297,13 @@ function renderKindControls(config: NodeConfig, onChange: (patch: Partial<NodeCo
       );
     case 'apiGateway':
       return <Num label={t('editor.inspector.rate_limit')} hint={t('editor.hints.rate_limit')} value={config.rateLimit ?? 1000} min={10} max={10000} step={10} unit="req/s" onChange={(v) => onChange({ rateLimit: v })} />;
+    case 'cdn':
+      return (
+        <>
+          <Num label={t('editor.inspector.hit_rate')} hint={t('editor.hints.cdn_hit_rate', { defaultValue: 'Fraction of requests served from CDN edge (misses forwarded to origin)' })} value={Math.round((config.hitRate ?? 0.85) * 100)} min={0} max={100} unit="%" onChange={(v) => onChange({ hitRate: v / 100 })} />
+          <Num label={t('editor.inspector.ttl')} hint={t('editor.hints.ttl')} value={config.ttlSeconds ?? 3600} min={1} max={86400} step={60} unit="s" onChange={(v) => onChange({ ttlSeconds: v })} />
+        </>
+      );
     case 'cache':
       return (
         <>
@@ -335,6 +367,23 @@ function renderKindControls(config: NodeConfig, onChange: (patch: Partial<NodeCo
           <Num label={t('editor.inspector.target_utilization')} hint={t('editor.hints.target_utilization')} value={Math.round((config.targetUtilization ?? 0.7) * 100)} min={10} max={95} unit="%" onChange={(v) => onChange({ targetUtilization: v / 100 })} />
           <Num label={t('editor.inspector.min_replicas')} hint={t('editor.hints.min_replicas')} value={config.minReplicas ?? 1} min={1} max={50} onChange={(v) => onChange({ minReplicas: v })} />
           <Num label={t('editor.inspector.max_replicas')} hint={t('editor.hints.max_replicas')} value={config.maxReplicas ?? 20} min={1} max={100} onChange={(v) => onChange({ maxReplicas: v })} />
+        </>
+      );
+    case 'rateLimiter':
+      return (
+        <>
+          <Num label={t('editor.inspector.rate_limit')} hint={t('editor.hints.rate_limit')} value={config.rateLimit ?? 100} min={1} max={10000} step={10} unit="req/s" onChange={(v) => onChange({ rateLimit: v })} />
+          <Num label={t('editor.inspector.burst_capacity')} hint={t('editor.hints.burst_capacity')} value={config.burstCapacity ?? 200} min={0} max={10000} step={50} unit="reqs" onChange={(v) => onChange({ burstCapacity: v })} />
+          <Select
+            label={t('editor.inspector.reject_behavior')}
+            hint={t('editor.hints.reject_behavior')}
+            value={config.rejectBehavior ?? 'drop'}
+            options={[
+              { value: 'drop', label: t('editor.inspector.reject.drop') },
+              { value: 'queue', label: t('editor.inspector.reject.queue') },
+            ]}
+            onChange={(v) => onChange({ rejectBehavior: v })}
+          />
         </>
       );
     default:

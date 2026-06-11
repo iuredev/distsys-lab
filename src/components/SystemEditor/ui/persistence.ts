@@ -70,3 +70,44 @@ export function parseDesign(raw: string): DesignV2 {
   }
   throw new Error('INVALID_FILE');
 }
+
+// ---- localStorage saved designs (max 5) ----
+
+export interface SavedEntry {
+  id: string;
+  name: string;
+  savedAt: string;
+  serialized: string;
+}
+
+const SAVES_KEY = 'distsys-lab:saves';
+export const MAX_SAVES = 5;
+
+export function getSavedDesigns(): SavedEntry[] {
+  try {
+    return JSON.parse(localStorage.getItem(SAVES_KEY) ?? '[]');
+  } catch {
+    return [];
+  }
+}
+
+export function addSavedDesign(name: string, design: DesignV2): { ok: boolean; error?: string } {
+  const saves = getSavedDesigns();
+  if (saves.length >= MAX_SAVES) {
+    return { ok: false, error: `Maximum of ${MAX_SAVES} saved designs reached. Delete one first.` };
+  }
+  const entry: SavedEntry = {
+    id: `save-${Date.now()}`,
+    name: name.trim() || 'Untitled',
+    savedAt: new Date().toISOString(),
+    serialized: serializeDesign(design.nodes, design.edges, design.seed, design.profileType, design.chaos),
+  };
+  saves.unshift(entry);
+  localStorage.setItem(SAVES_KEY, JSON.stringify(saves));
+  return { ok: true };
+}
+
+export function deleteSavedDesign(id: string): void {
+  const saves = getSavedDesigns().filter((s) => s.id !== id);
+  localStorage.setItem(SAVES_KEY, JSON.stringify(saves));
+}

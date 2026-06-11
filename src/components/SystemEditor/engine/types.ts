@@ -8,6 +8,7 @@ export type NodeKind =
   | 'client'
   | 'loadBalancer'
   | 'apiGateway'
+  | 'cdn'
   | 'cache'
   | 'server'
   | 'database'
@@ -16,7 +17,10 @@ export type NodeKind =
   | 'messageQueue'
   | 'circuitBreaker'
   | 'autoScaler'
-  | 'externalDependency';
+  | 'externalDependency'
+  | 'rateLimiter';
+
+export type RejectBehavior = 'drop' | 'queue';
 
 export type LoadBalancerStrategy =
   | 'roundRobin'
@@ -44,6 +48,8 @@ export interface NodeConfig {
   id: string;
   kind: NodeKind;
   label: string;
+  /** Cloud instance type (e.g. 't3.medium', 'n2-standard-2'). Drives cost when set; falls back to service-time heuristic when absent. */
+  instanceType?: string;
 
   // --- Game mode (ignored by the engine and the normal editor) ---
   /** When true the component cannot be deleted by players (admin-locked seed). */
@@ -117,6 +123,12 @@ export interface NodeConfig {
   errorThreshold?: number;
   /** Time the breaker stays open before half-open probing (ms). */
   resetTimeoutMs?: number;
+
+  // --- rateLimiter ---
+  /** Token-bucket burst capacity (requests). Only used when rejectBehavior='queue'. */
+  burstCapacity?: number;
+  /** What happens to requests exceeding rateLimit: drop immediately or queue. */
+  rejectBehavior?: RejectBehavior;
 
   // --- autoScaler ---
   /** Target utilization the scaler tries to hold [0..1]. */
@@ -240,10 +252,12 @@ export function defaultsForKind(kind: NodeKind, id: string, label: string): Node
       return { ...base, serviceTimeMs: 2, concurrency: 16, strategy: 'roundRobin' };
     case 'apiGateway':
       return { ...base, serviceTimeMs: 5, concurrency: 16, rateLimit: 1000 };
+    case 'cdn':
+      return { ...base, serviceTimeMs: 10, concurrency: 64, hitRate: 0.85, ttlSeconds: 3600, replicas: 1 };
     case 'cache':
       return { ...base, serviceTimeMs: 2, concurrency: 32, hitRate: 0.8, ttlSeconds: 60 };
     case 'server':
-      return { ...base, serviceTimeMs: 30, concurrency: 4, replicas: 2 };
+      return { ...base, serviceTimeMs: 30, concurrency: 4, replicas: 1 };
     case 'database':
       return { ...base, serviceTimeMs: 15, concurrency: 8, writeFraction: 0.2 };
     case 'replicatedDb':
@@ -253,7 +267,7 @@ export function defaultsForKind(kind: NodeKind, id: string, label: string): Node
         concurrency: 8,
         replicaCount: 3,
         consistency: 'quorum',
-        replicationLagMs: 50,
+        replicationLagMs: 5,
         writeFraction: 0.2,
       };
     case 'shardRouter':
@@ -274,6 +288,8 @@ export function defaultsForKind(kind: NodeKind, id: string, label: string): Node
       };
     case 'externalDependency':
       return { ...base, serviceTimeMs: 80, concurrency: 8, failureRate: 0.01, latencyCv: 1.0 };
+    case 'rateLimiter':
+      return { ...base, serviceTimeMs: 1, concurrency: 32, replicas: 1, rateLimit: 100, burstCapacity: 200, rejectBehavior: 'drop' };
     default:
       return base;
   }

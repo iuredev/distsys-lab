@@ -277,6 +277,52 @@ function socialFeed(): Preset {
   };
 }
 
+/**
+ * Open Banking platform (Plaid / Belvo style).
+ *
+ * Two rate limiters in series illustrate the real problem:
+ *   1. "Fraud Guard" caps how fast the fraud-scoring engine is called — even if
+ *      the API scales horizontally you never want > 60 fraud checks/s because
+ *      the engine is expensive and has an SLA cost per call.
+ *   2. "Bank API Quota" enforces the contractual hard limit the bank imposes on
+ *      external API calls (20 req/s). Anything above that gets dropped and must
+ *      be retried later — or the account operation degrades gracefully.
+ *
+ * Load-balancer uses a 2:1 weight split so the cached (low-risk) path carries
+ * ~200 req/s while only ~100 req/s go to fraud scoring.
+ */
+function openBankingRateLimiting(): Preset {
+  return {
+    id: 'open-banking-rate-limiting',
+    name: 'Open Banking (Rate Limiting)',
+    seed: 11,
+    nodes: [
+      node('client',              'c1',       'Mobile Apps',      400,  0,   { baseRate: 300 }),
+      node('apiGateway',          'gw',       'API Gateway',      400,  130, { rateLimit: 600 }),
+      node('loadBalancer',        'lb',       'Load Balancer',    400,  265),
+      // ── fast path: serve balance from cache ──────────────────────────────
+      node('cache',               'bal_cache','Balance Cache',    160,  410, { hitRate: 0.90, ttlSeconds: 30, serviceTimeMs: 2 }),
+      node('database',            'accounts', 'Accounts DB',      160,  560, { serviceTimeMs: 12, concurrency: 20 }),
+      // ── slow path: fraud check → bank API ────────────────────────────────
+      node('rateLimiter',         'rl_fraud', 'Fraud Guard',      640,  410, { rateLimit: 60,  rejectBehavior: 'drop' }),
+      node('autoScaler',          'fraud',    'Fraud Engine',     640,  560, { targetUtilization: 0.7, serviceTimeMs: 80, concurrency: 8 }),
+      node('rateLimiter',         'rl_bank',  'Bank API Quota',   640,  710, { rateLimit: 20,  rejectBehavior: 'drop' }),
+      node('externalDependency',  'bank_api', 'Bank Core API',    640,  860, { serviceTimeMs: 200, failureRate: 0.02, latencyCv: 1.2 }),
+    ],
+    edges: [
+      edge('c1', 'gw'),
+      edge('gw', 'lb'),
+      // 2:1 weight → ~200 req/s to cache path, ~100 req/s to fraud path
+      { id: 'e-lb-cache',  source: 'lb',    target: 'bal_cache', weight: 2 },
+      { id: 'e-lb-fraud',  source: 'lb',    target: 'rl_fraud',  weight: 1 },
+      edge('bal_cache', 'accounts'),
+      edge('rl_fraud',  'fraud'),
+      edge('fraud',     'rl_bank'),
+      edge('rl_bank',   'bank_api'),
+    ],
+  };
+}
+
 /** Video streaming: CDN edge cache, metadata service and object storage. */
 function videoStreaming(): Preset {
   return {
@@ -312,6 +358,7 @@ export const PRESETS: Preset[] = [
   chatMessaging(),
   socialFeed(),
   videoStreaming(),
+  openBankingRateLimiting(),
 ];
 
 export function getPreset(id: string): Preset | undefined {
