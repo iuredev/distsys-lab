@@ -145,7 +145,7 @@ function shardedStore(): Preset {
     nodes: [
       node('client', 'c1', 'Users', 400, 0, { baseRate: 400 }),
       node('loadBalancer', 'lb', 'Load Balancer', 400, 130),
-      node('shardRouter', 'sr', 'Shard Router', 400, 270, { shardCount: 4, skew: 0.2 }),
+      node('shardRouter', 'sr', 'Shard Router', 400, 270, { shardCount: 3, skew: 0.2 }),
       node('replicatedDb', 'db1', 'Shard A (replicated)', 150, 430, { replicaCount: 3 }),
       node('replicatedDb', 'db2', 'Shard B (replicated)', 400, 430, { replicaCount: 3 }),
       node('replicatedDb', 'db3', 'Shard C (replicated)', 650, 430, { replicaCount: 3 }),
@@ -347,6 +347,114 @@ function videoStreaming(): Preset {
   };
 }
 
+/**
+ * Product page BFF (scatter-gather).
+ *
+ * A Backend-for-Frontend aggregates three downstream microservices in parallel
+ * so the client receives a single composed response. The fanOut node waits for
+ * ALL three (scatterK = 3 = wait-all), so end-to-end latency is dominated by
+ * the slowest leg (InventoryService at ~50 ms). Try reducing scatterK to 2 in
+ * the inspector — latency drops because the slowest reply is no longer required.
+ *
+ * Key lesson: scatter-gather tail latency = max of N legs, not the mean.
+ * Every slow downstream inflates p99 for the whole response.
+ */
+function bffScatterGather(): Preset {
+  return {
+    id: 'bff-scatter-gather',
+    name: 'BFF / Scatter-Gather',
+    seed: 13,
+    nodes: [
+      node('client',     'c1',   'Mobile Clients',    400,   0,   { baseRate: 100 }),
+      node('apiGateway', 'gw',   'API Gateway',       400,   130, { rateLimit: 300 }),
+      node('server',     'bff',  'BFF Server',        400,   270, { replicas: 2, serviceTimeMs: 5, concurrency: 32 }),
+      node('fanOut',     'fan',  'Scatter-Gather',    400,   420, { serviceTimeMs: 2, concurrency: 64 }),
+      // ── leg 1: user profile ───────────────────────────────────────────────
+      node('server',   'usvc',   'User Service',      130,   570, { replicas: 1, serviceTimeMs: 20, concurrency: 16 }),
+      node('database', 'udb',    'User DB',           130,   720, { serviceTimeMs: 8 }),
+      // ── leg 2: product catalog ────────────────────────────────────────────
+      node('server',   'psvc',   'Product Service',   400,   570, { replicas: 1, serviceTimeMs: 30, concurrency: 16 }),
+      node('database', 'pdb',    'Product DB',        400,   720, { serviceTimeMs: 12 }),
+      // ── leg 3: real-time inventory ────────────────────────────────────────
+      node('server',   'isvc',   'Inventory Service', 670,   570, { replicas: 1, serviceTimeMs: 50, concurrency: 16 }),
+      node('database', 'idb',    'Inventory DB',      670,   720, { serviceTimeMs: 15, writeFraction: 0.3 }),
+    ],
+    edges: [
+      edge('c1',   'gw'),
+      edge('gw',   'bff'),
+      edge('bff',  'fan'),
+      edge('fan',  'usvc'),
+      edge('fan',  'psvc'),
+      edge('fan',  'isvc'),
+      edge('usvc', 'udb'),
+      edge('psvc', 'pdb'),
+      edge('isvc', 'idb'),
+    ],
+  };
+}
+
+/**
+ * E-commerce with Primary / Read-Replica split.
+ *
+ * Classic master/slave pattern: all writes go to the primary (strong
+ * consistency, 3 replicas), all reads go through a cache and then to the
+ * read-replica set (eventual consistency, 5 replicas).
+ *
+ * The weighted split on the app server edges (1:4) models a typical e-commerce
+ * read/write ratio (~20% writes, ~80% reads). Try cranking up the load profile
+ * to "Step" and watch the primary saturate first — the bottleneck lesson.
+ */
+function primaryReadReplica(): Preset {
+  return {
+    id: 'primary-read-replica',
+    name: 'Primary / Read-Replica DB',
+    seed: 12,
+    nodes: [
+      node('client',        'c1',       'Users',           400,   0,   { baseRate: 600 }),
+      node('apiGateway',    'gw',       'API Gateway',     400,   130, { rateLimit: 900 }),
+      node('autoScaler',    'app',      'App Service',     400,   280, {
+        targetUtilization: 0.7,
+        serviceTimeMs: 20,
+        concurrency: 8,
+        scaleUpCooldownSec: 30,
+        scaleDownCooldownSec: 60,
+      }),
+      // ── write path (primary) ─────────────────────────────────────────────
+      node('replicatedDb',  'primary',  'Primary DB',      140,   460, {
+        replicaCount: 3,
+        consistency: 'strong',
+        writeFraction: 0.85,
+        replicationLagMs: 10,
+        serviceTimeMs: 18,
+        concurrency: 12,
+      }),
+      // ── read path (cache + replicas) ─────────────────────────────────────
+      node('cache',         'rcache',   'Read Cache',      660,   370, {
+        hitRate: 0.72,
+        ttlSeconds: 30,
+        serviceTimeMs: 2,
+        concurrency: 32,
+      }),
+      node('replicatedDb',  'replicas', 'Read Replicas',   660,   510, {
+        replicaCount: 5,
+        consistency: 'eventual',
+        writeFraction: 0.05,
+        replicationLagMs: 15,
+        serviceTimeMs: 12,
+        concurrency: 20,
+      }),
+    ],
+    edges: [
+      edge('c1',  'gw'),
+      edge('gw',  'app'),
+      // 1:4 weight → ~20% writes to primary, ~80% reads to cache
+      { id: 'e-app-primary',  source: 'app', target: 'primary',  weight: 1 },
+      { id: 'e-app-rcache',   source: 'app', target: 'rcache',   weight: 4 },
+      edge('rcache', 'replicas'),
+    ],
+  };
+}
+
 export const PRESETS: Preset[] = [
   threeTier(),
   readHeavyCache(),
@@ -359,6 +467,8 @@ export const PRESETS: Preset[] = [
   socialFeed(),
   videoStreaming(),
   openBankingRateLimiting(),
+  primaryReadReplica(),
+  bffScatterGather(),
 ];
 
 export function getPreset(id: string): Preset | undefined {

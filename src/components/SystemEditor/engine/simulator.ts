@@ -60,6 +60,9 @@ export class Simulator {
       breakerShed: new Map(),
       replicaOverride: new Map(),
       dtSeconds: this.dt,
+      scaleLastUp: new Map(),
+      scaleLastDown: new Map(),
+      cacheHitRates: new Map(),
     };
     this.initStatefulNodes();
   }
@@ -75,6 +78,10 @@ export class Simulator {
       if (n.kind === 'autoScaler') {
         this.state.replicaOverride.set(n.id, n.replicas);
       }
+      if ((n.kind === 'cache' || n.kind === 'cdn') && !this.state.cacheHitRates.has(n.id)) {
+        // Start warm (target hit rate) so existing systems show steady state immediately.
+        this.state.cacheHitRates.set(n.id, n.hitRate ?? (n.kind === 'cdn' ? 0.85 : 0.8));
+      }
     });
   }
 
@@ -86,12 +93,19 @@ export class Simulator {
     const ids = new Set(nodes.map((n) => n.id));
     [...this.state.queueLengths.keys()].forEach((id) => !ids.has(id) && this.state.queueLengths.delete(id));
     [...this.breakers.keys()].forEach((id) => !ids.has(id) && this.breakers.delete(id));
+    [...this.state.scaleLastUp.keys()].forEach((id) => !ids.has(id) && this.state.scaleLastUp.delete(id));
+    [...this.state.scaleLastDown.keys()].forEach((id) => !ids.has(id) && this.state.scaleLastDown.delete(id));
+    [...this.state.cacheHitRates.keys()].forEach((id) => !ids.has(id) && this.state.cacheHitRates.delete(id));
     nodes.forEach((n) => {
       if (n.kind === 'circuitBreaker' && !this.breakers.has(n.id)) {
         this.breakers.set(n.id, new CircuitBreaker(n.errorThreshold ?? 0.5, n.resetTimeoutMs ?? 5000));
       }
       if (n.kind === 'autoScaler' && !this.state.replicaOverride.has(n.id)) {
         this.state.replicaOverride.set(n.id, n.replicas);
+      }
+      if ((n.kind === 'cache' || n.kind === 'cdn') && !this.state.cacheHitRates.has(n.id)) {
+        // New cache nodes start cold (0% hit rate) to show warmup effect.
+        this.state.cacheHitRates.set(n.id, 0);
       }
     });
   }
@@ -119,6 +133,9 @@ export class Simulator {
     this.state.queueLengths.clear();
     this.state.breakerShed.clear();
     this.state.replicaOverride.clear();
+    this.state.scaleLastUp.clear();
+    this.state.scaleLastDown.clear();
+    this.state.cacheHitRates.clear();
     this.breakers.clear();
     this.initStatefulNodes();
   }
@@ -130,6 +147,7 @@ export class Simulator {
   /** Run one simulation step and return the resulting frame. */
   tick(): SimulationFrame {
     this.time += this.dt;
+    this.updateCacheWarmup();
 
     const mult = this.profile.multiplierAt(this.time);
     const effectiveNodes = this.applyChaosAndLoad(mult);
@@ -220,6 +238,25 @@ export class Simulator {
     });
   }
 
+  private updateCacheWarmup(): void {
+    this.nodes.forEach((n) => {
+      if (n.kind !== 'cache' && n.kind !== 'cdn') return;
+      const isKilled = this.chaos.some(
+        (ev) => ev.targetId === n.id && ev.type === 'killNode' && isChaosActive(ev, this.time),
+      );
+      if (isKilled) {
+        // Cache flushed by chaos — thundering herd begins when chaos ends.
+        this.state.cacheHitRates.set(n.id, 0);
+        return;
+      }
+      const target = n.hitRate ?? (n.kind === 'cdn' ? 0.85 : 0.8);
+      const warmupSec = n.warmupSec ?? (n.kind === 'cdn' ? 300 : 30);
+      const current = this.state.cacheHitRates.get(n.id) ?? 0;
+      const alpha = 1 - Math.exp(-this.dt / warmupSec);
+      this.state.cacheHitRates.set(n.id, Math.min(target, current + (target - current) * alpha));
+    });
+  }
+
   private updateAutoscalers(runtime: Map<string, NodeRuntime>): void {
     this.nodes.forEach((n) => {
       if (n.kind !== 'autoScaler') return;
@@ -228,11 +265,18 @@ export class Simulator {
       const target = n.targetUtilization ?? 0.7;
       const min = n.minReplicas ?? 1;
       const max = n.maxReplicas ?? 20;
+      const upCooldown = n.scaleUpCooldownSec ?? 30;
+      const downCooldown = n.scaleDownCooldownSec ?? 60;
+      const lastUp = this.state.scaleLastUp.get(n.id) ?? -Infinity;
+      const lastDown = this.state.scaleLastDown.get(n.id) ?? -Infinity;
       const current = this.state.replicaOverride.get(n.id) ?? n.replicas;
       let desired = current;
-      if (rt.utilization > target * 1.1) desired = current + 1;
-      else if (rt.utilization < target * 0.7 && current > min) desired = current - 1;
-      this.state.replicaOverride.set(n.id, Math.max(min, Math.min(max, desired)));
+      if (rt.utilization > target * 1.1 && this.time - lastUp >= upCooldown) desired = current + 1;
+      else if (rt.utilization < target * 0.7 && current > min && this.time - lastDown >= downCooldown) desired = current - 1;
+      const clamped = Math.max(min, Math.min(max, desired));
+      if (clamped > current) this.state.scaleLastUp.set(n.id, this.time);
+      else if (clamped < current) this.state.scaleLastDown.set(n.id, this.time);
+      this.state.replicaOverride.set(n.id, clamped);
     });
   }
 
@@ -314,7 +358,7 @@ function toNodeMetrics(rt: NodeRuntime, p: { p50: number; p95: number; p99: numb
   if (rt.cacheHits !== undefined) {
     metrics.cacheHits = round(rt.cacheHits);
     metrics.cacheMisses = round(rt.cacheMisses ?? 0);
-    metrics.hitRate = rt.cfg.hitRate;
+    metrics.hitRate = rt.terminateProb; // effective hit rate after warmup (terminateProb = hit fraction for cache/CDN)
   }
   if (rt.shardLoads) metrics.shardLoads = rt.shardLoads.map(round);
   return metrics;

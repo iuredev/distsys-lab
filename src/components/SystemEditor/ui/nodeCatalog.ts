@@ -17,6 +17,7 @@ import {
   Globe,
   Gauge,
   Radio,
+  Share2,
   type LucideIcon,
 } from 'lucide-react';
 import { NodeKind } from '../engine/types';
@@ -47,12 +48,14 @@ export const NODE_CATALOG: Record<NodeKind, NodeCatalogEntry> = {
   autoScaler: { kind: 'autoScaler', icon: TrendingUp, accent: 'border-cyan-500', hex: '#06b6d4', hasTarget: true, hasSource: true },
   externalDependency: { kind: 'externalDependency', icon: Globe, accent: 'border-slate-400', hex: '#94a3b8', hasTarget: true, hasSource: false },
   rateLimiter: { kind: 'rateLimiter', icon: Gauge, accent: 'border-lime-500', hex: '#84cc16', hasTarget: true, hasSource: true },
+  fanOut: { kind: 'fanOut', icon: Share2, accent: 'border-fuchsia-500', hex: '#d946ef', hasTarget: true, hasSource: true },
 };
 
 /** Palette ordering for the components drawer. */
 export const PALETTE_ORDER: NodeKind[] = [
   'client',
   'loadBalancer',
+  'fanOut',
   'apiGateway',
   'cdn',
   'rateLimiter',
@@ -87,4 +90,5 @@ export const KIND_DEFAULT_LABEL: Record<NodeKind, string> = {
   autoScaler: 'Auto-Scaler',
   externalDependency: 'External Dependency',
   rateLimiter: 'Rate Limiter',
+  fanOut: 'Fan-out',
 };

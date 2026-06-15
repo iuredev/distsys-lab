@@ -51,6 +51,19 @@ export function traceLatency(
       latency += sampleNodeLatency(current, rng);
       recordSample(perNodeSamples, current.cfg.id, hopLatency(current, rng));
 
+      // Fan-out: trace all branches in parallel; contribute the k-th smallest latency.
+      if (current.cfg.kind === 'fanOut' && current.branches.length > 0) {
+        const k = Math.min(
+          current.branches.length,
+          Math.max(1, current.cfg.scatterK ?? current.branches.length),
+        );
+        const bl = current.branches
+          .map((b) => traceSubPath(runtime.get(b.target), runtime, rng, MAX_HOPS - hops))
+          .sort((a, b) => a - b);
+        latency += bl[k - 1] ?? 0;
+        break;
+      }
+
       // Terminate (cache hit, sink, answered request)?
       if (current.branches.length === 0 || rng.next() < current.terminateProb) {
         break;
@@ -78,15 +91,23 @@ function sampleNodeLatency(rt: NodeRuntime, rng: Rng): number {
 
 function hopLatency(rt: NodeRuntime, rng: Rng): number {
   const cfg = rt.cfg;
-  const service = sampleService(cfg.serviceTimeMs, cfg.latencyDistribution, cfg.latencyCv, rng);
-  // Queue wait is approximately exponential with mean Wq.
+  // Queue wait sampled as Exp(Wq): exact for M/M/1, approximate for M/M/c
+  // (true distribution is a mixture of exponentials, but Exp(mean) is close).
   const wait = rt.queue.waitMs > 0 ? rng.exponential(rt.queue.waitMs) : 0;
-  let total = service + wait;
-  // Replicated DB writes carry replication lag on the tail.
-  if (cfg.kind === 'replicatedDb' && cfg.consistency === 'strong') {
-    total += cfg.replicationLagMs ?? 0;
+
+  // replicatedDb: probabilistically sample a read or write request.
+  // Writes use writeServiceTimeMs (may differ from serviceTimeMs) and carry
+  // replication lag for non-eventual consistency — matching the solver's
+  // writeServiceMs = writeServiceTimeMs + replicationLagMs formula.
+  if (cfg.kind === 'replicatedDb') {
+    const writeFrac = cfg.writeFraction ?? 0.2;
+    const isWrite = rng.next() < writeFrac;
+    const serviceMs = isWrite ? (cfg.writeServiceTimeMs ?? cfg.serviceTimeMs) : cfg.serviceTimeMs;
+    const lagMs = (isWrite && cfg.consistency !== 'eventual') ? (cfg.replicationLagMs ?? 0) : 0;
+    return sampleService(serviceMs, cfg.latencyDistribution, cfg.latencyCv, rng) + wait + lagMs;
   }
-  return total;
+
+  return sampleService(cfg.serviceTimeMs, cfg.latencyDistribution, cfg.latencyCv, rng) + wait;
 }
 
 function sampleService(
@@ -105,6 +126,35 @@ function sampleService(
     default:
       return rng.lognormal(meanMs, cv);
   }
+}
+
+function traceSubPath(
+  start: NodeRuntime | undefined,
+  runtime: Map<string, NodeRuntime>,
+  rng: Rng,
+  maxHops: number,
+): number {
+  let current = start;
+  let latency = 0;
+  let hops = 0;
+  while (current && hops < maxHops) {
+    hops++;
+    latency += hopLatency(current, rng);
+    // Nested fanOut: apply k-of-N scatter-gather recursively.
+    if (current.cfg.kind === 'fanOut' && current.branches.length > 0) {
+      const k = Math.min(current.branches.length, Math.max(1, current.cfg.scatterK ?? current.branches.length));
+      const bl = current.branches
+        .map((b) => traceSubPath(runtime.get(b.target), runtime, rng, maxHops - hops))
+        .sort((a, b) => a - b);
+      latency += bl[k - 1] ?? 0;
+      break;
+    }
+    if (current.branches.length === 0 || rng.next() < current.terminateProb) break;
+    const nextId = pickBranch(current, rng);
+    if (!nextId) break;
+    current = runtime.get(nextId);
+  }
+  return latency;
 }
 
 function pickWeighted(clients: NodeRuntime[], total: number, rng: Rng): NodeRuntime {

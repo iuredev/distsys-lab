@@ -116,7 +116,7 @@ function KindExtras({ kind, config, metrics, t }: { kind: string; config: NodeCo
       <>
         <MetricRow label={t('editor.node.hit_s')} value={`${metrics.cacheHits ?? 0}`} tone="text-sky-300" />
         <MetricRow label={t('editor.node.miss_s')} value={`${metrics.cacheMisses ?? 0}`} tone="text-red-300" />
-        <MetricRow label={t('editor.node.hit_rate')} value={`${Math.round((config.hitRate ?? 0) * 100)}%`} tone="text-sky-400" />
+        <MetricRow label={t('editor.node.hit_rate')} value={`${Math.round((metrics.hitRate ?? 0) * 100)}%`} tone="text-sky-400" />
       </>
     );
   }
@@ -125,7 +125,7 @@ function KindExtras({ kind, config, metrics, t }: { kind: string; config: NodeCo
       <>
         <MetricRow label={t('editor.node.hit_s')} value={`${metrics.cacheHits ?? 0}`} tone="text-pink-300" />
         <MetricRow label={t('editor.node.miss_s')} value={`${metrics.cacheMisses ?? 0}`} tone="text-red-300" />
-        <MetricRow label={t('editor.node.hit_rate')} value={`${Math.round((config.hitRate ?? 0) * 100)}%`} tone="text-purple-300" />
+        <MetricRow label={t('editor.node.hit_rate')} value={`${Math.round((metrics.hitRate ?? 0) * 100)}%`} tone="text-purple-300" />
       </>
     );
   }
@@ -222,6 +222,16 @@ function KindExtras({ kind, config, metrics, t }: { kind: string; config: NodeCo
           })}
         </div>
       </>
+    );
+  }
+  if (kind === 'fanOut' && metrics) {
+    const k = config.scatterK;
+    return (
+      <MetricRow
+        label={t('editor.node.fanout_mode')}
+        value={k != null ? `${k}-of-N` : t('editor.node.fanout_all')}
+        tone="text-fuchsia-300"
+      />
     );
   }
   return null;

@@ -300,8 +300,18 @@ function renderKindControls(config: NodeConfig, onChange: (patch: Partial<NodeCo
     case 'cdn':
       return (
         <>
-          <Num label={t('editor.inspector.hit_rate')} hint={t('editor.hints.cdn_hit_rate', { defaultValue: 'Fraction of requests served from CDN edge (misses forwarded to origin)' })} value={Math.round((config.hitRate ?? 0.85) * 100)} min={0} max={100} unit="%" onChange={(v) => onChange({ hitRate: v / 100 })} />
+          <Num label={t('editor.inspector.hit_rate')} hint={t('editor.hints.cdn_hit_rate')} value={Math.round((config.hitRate ?? 0.85) * 100)} min={0} max={100} unit="%" onChange={(v) => onChange({ hitRate: v / 100 })} />
           <Num label={t('editor.inspector.ttl')} hint={t('editor.hints.ttl')} value={config.ttlSeconds ?? 3600} min={1} max={86400} step={60} unit="s" onChange={(v) => onChange({ ttlSeconds: v })} />
+          <Num
+            label={t('editor.inspector.warmup_sec')}
+            hint={t('editor.hints.warmup_sec')}
+            value={config.warmupSec ?? 300}
+            min={0}
+            max={3600}
+            step={60}
+            unit="s"
+            onChange={(v) => onChange({ warmupSec: v === 0 ? undefined : v })}
+          />
         </>
       );
     case 'cache':
@@ -309,6 +319,16 @@ function renderKindControls(config: NodeConfig, onChange: (patch: Partial<NodeCo
         <>
           <Num label={t('editor.inspector.hit_rate')} hint={t('editor.hints.hit_rate')} value={Math.round((config.hitRate ?? 0.8) * 100)} min={0} max={100} unit="%" onChange={(v) => onChange({ hitRate: v / 100 })} />
           <Num label={t('editor.inspector.ttl')} hint={t('editor.hints.ttl')} value={config.ttlSeconds ?? 60} min={1} max={3600} step={1} unit="s" onChange={(v) => onChange({ ttlSeconds: v })} />
+          <Num
+            label={t('editor.inspector.warmup_sec')}
+            hint={t('editor.hints.warmup_sec')}
+            value={config.warmupSec ?? 30}
+            min={0}
+            max={600}
+            step={10}
+            unit="s"
+            onChange={(v) => onChange({ warmupSec: v === 0 ? undefined : v })}
+          />
         </>
       );
     case 'messageQueue':
@@ -318,12 +338,12 @@ function renderKindControls(config: NodeConfig, onChange: (patch: Partial<NodeCo
           <Num label={t('editor.inspector.drain_rate')} hint={t('editor.hints.drain_rate')} value={config.dequeueRate ?? 100} min={1} max={5000} step={10} unit="msgs/s" onChange={(v) => onChange({ dequeueRate: v })} />
         </>
       );
-    case 'replicatedDb':
+    case 'replicatedDb': {
+      const writeFrac = config.writeFraction ?? 0.2;
+      const readFrac = 1 - writeFrac;
       return (
         <>
           <Num label={t('editor.inspector.replicas')} hint={t('editor.hints.replicas')} value={config.replicaCount ?? 3} min={1} max={15} onChange={(v) => onChange({ replicaCount: v })} />
-          <Num label={t('editor.inspector.write_fraction')} hint={t('editor.hints.write_fraction')} value={Math.round((config.writeFraction ?? 0.2) * 100)} min={0} max={100} unit="%" onChange={(v) => onChange({ writeFraction: v / 100 })} />
-          <Num label={t('editor.inspector.replication_lag')} hint={t('editor.hints.replication_lag')} value={config.replicationLagMs ?? 50} min={0} max={1000} step={5} unit="ms" onChange={(v) => onChange({ replicationLagMs: v })} />
           <Select
             label={t('editor.inspector.consistency')}
             hint={t('editor.hints.consistency')}
@@ -335,8 +355,20 @@ function renderKindControls(config: NodeConfig, onChange: (patch: Partial<NodeCo
             ]}
             onChange={(v) => onChange({ consistency: v })}
           />
+          <Num label={t('editor.inspector.replication_lag')} hint={t('editor.hints.replication_lag')} value={config.replicationLagMs ?? 5} min={0} max={500} step={5} unit="ms" onChange={(v) => onChange({ replicationLagMs: v })} />
+          <div className="font-sans text-[11px] font-medium text-slate-600 dark:text-signal-amber mt-2 mb-2">
+            {t('editor.inspector.op_mix')}
+          </div>
+          <Num label={t('editor.inspector.read_fraction')} hint={t('editor.hints.read_fraction')} value={Math.round(readFrac * 100)} min={0} max={100} unit="%" onChange={(v) => onChange({ writeFraction: Math.max(0, 1 - v / 100) })} />
+          <Num label={t('editor.inspector.write_fraction')} hint={t('editor.hints.write_fraction')} value={Math.round(writeFrac * 100)} min={0} max={100} unit="%" onChange={(v) => onChange({ writeFraction: v / 100 })} />
+          <div className="font-sans text-[11px] font-medium text-slate-600 dark:text-signal-amber mt-2 mb-2">
+            {t('editor.inspector.service_times')}
+          </div>
+          <Num label={t('editor.inspector.read_service_time')} hint={t('editor.hints.read_service_time')} value={config.serviceTimeMs} min={1} max={500} unit="ms" onChange={(v) => onChange({ serviceTimeMs: v })} />
+          <Num label={t('editor.inspector.write_service_time')} hint={t('editor.hints.write_service_time')} value={config.writeServiceTimeMs ?? config.serviceTimeMs} min={1} max={500} unit="ms" onChange={(v) => onChange({ writeServiceTimeMs: v })} />
         </>
       );
+    }
     case 'shardRouter':
       return (
         <>
@@ -367,6 +399,8 @@ function renderKindControls(config: NodeConfig, onChange: (patch: Partial<NodeCo
           <Num label={t('editor.inspector.target_utilization')} hint={t('editor.hints.target_utilization')} value={Math.round((config.targetUtilization ?? 0.7) * 100)} min={10} max={95} unit="%" onChange={(v) => onChange({ targetUtilization: v / 100 })} />
           <Num label={t('editor.inspector.min_replicas')} hint={t('editor.hints.min_replicas')} value={config.minReplicas ?? 1} min={1} max={50} onChange={(v) => onChange({ minReplicas: v })} />
           <Num label={t('editor.inspector.max_replicas')} hint={t('editor.hints.max_replicas')} value={config.maxReplicas ?? 20} min={1} max={100} onChange={(v) => onChange({ maxReplicas: v })} />
+          <Num label={t('editor.inspector.scale_up_cooldown')} hint={t('editor.hints.scale_up_cooldown')} value={config.scaleUpCooldownSec ?? 30} min={5} max={300} step={5} unit="s" onChange={(v) => onChange({ scaleUpCooldownSec: v })} />
+          <Num label={t('editor.inspector.scale_down_cooldown')} hint={t('editor.hints.scale_down_cooldown')} value={config.scaleDownCooldownSec ?? 60} min={5} max={300} step={5} unit="s" onChange={(v) => onChange({ scaleDownCooldownSec: v })} />
         </>
       );
     case 'rateLimiter':
@@ -385,6 +419,17 @@ function renderKindControls(config: NodeConfig, onChange: (patch: Partial<NodeCo
             onChange={(v) => onChange({ rejectBehavior: v })}
           />
         </>
+      );
+    case 'fanOut':
+      return (
+        <Num
+          label={t('editor.inspector.scatter_k')}
+          hint={t('editor.hints.scatter_k')}
+          value={config.scatterK ?? 0}
+          min={0}
+          max={10}
+          onChange={(v) => onChange({ scatterK: v === 0 ? undefined : v })}
+        />
       );
     default:
       return null;

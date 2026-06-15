@@ -30,6 +30,12 @@ export interface EngineState {
   /** autoScaler id -> current replica count override. */
   replicaOverride: Map<string, number>;
   dtSeconds: number;
+  /** autoScaler id -> simulated time (s) of last scale-up event. */
+  scaleLastUp: Map<string, number>;
+  /** autoScaler id -> simulated time (s) of last scale-down event. */
+  scaleLastDown: Map<string, number>;
+  /** cache/cdn id -> current effective hit rate (warms up over time). */
+  cacheHitRates: Map<string, number>;
 }
 
 export interface RouteBranch {
@@ -72,7 +78,10 @@ export interface SolveResult {
 }
 
 const MAX_ITERS = 80;
-const EPSILON = 0.25; // req/s convergence tolerance
+// Convergence tolerance: absolute floor of 0.25 req/s scaled up to 0.1 % of
+// max edge flow so the criterion stays meaningful at any traffic level.
+const EPSILON_ABS = 0.25;
+const EPSILON_REL = 0.001;
 
 export function solveFlow(
   nodes: NodeConfig[],
@@ -128,7 +137,10 @@ export function solveFlow(
 
     nextEffFail.forEach((v, k) => effFail.set(k, v));
 
-    if (maxDelta < EPSILON) {
+    let maxFlow = 0;
+    edgeFlow.forEach((f) => { if (f > maxFlow) maxFlow = f; });
+    const epsilon = Math.max(EPSILON_ABS, EPSILON_REL * maxFlow);
+    if (maxDelta < epsilon) {
       converged = true;
       break;
     }
@@ -146,6 +158,30 @@ function weightedDownstreamFail(branches: RouteBranch[], effFail: Map<string, nu
     total += b.prob;
   }
   return total > 0 ? acc / total : 0;
+}
+
+function fanOutFailProb(branches: RouteBranch[], effFail: Map<string, number>, k: number): number {
+  const N = branches.length;
+  if (N === 0) return 0;
+  const fails = branches.map((b) => clamp01(effFail.get(b.target) ?? 0));
+  if (k >= N) return combineFailureProbs(...fails); // wait-all: fail if any fails
+  if (k <= 1) return fails.reduce((p, f) => p * f, 1); // first-wins: fail only if all fail
+  // k-of-N: approximate with binomial using mean fail probability.
+  const avgFail = fails.reduce((s, f) => s + f, 0) / N;
+  const avgSucc = 1 - avgFail;
+  let pFail = 0;
+  for (let i = 0; i < k; i++) {
+    pFail += binomCoeff(N, i) * Math.pow(avgSucc, i) * Math.pow(avgFail, N - i);
+  }
+  return clamp01(pFail);
+}
+
+function binomCoeff(n: number, k: number): number {
+  if (k < 0 || k > n) return 0;
+  if (k === 0 || k === n) return 1;
+  let c = 1;
+  for (let i = 0; i < Math.min(k, n - k); i++) c = (c * (n - i)) / (i + 1);
+  return Math.round(c);
 }
 
 function processNode(
@@ -204,7 +240,7 @@ function processNode(
     }
 
     case 'cdn': {
-      const hit = clamp01(node.hitRate ?? 0.85);
+      const hit = clamp01(state.cacheHitRates.get(node.id) ?? node.hitRate ?? 0.85);
       return capNode(arrival, mu, servers, outgoing, effFail, {
         terminateProb: hit,
         cacheHits: 0,
@@ -213,7 +249,7 @@ function processNode(
     }
 
     case 'cache': {
-      const hit = clamp01(node.hitRate ?? 0.8);
+      const hit = clamp01(state.cacheHitRates.get(node.id) ?? node.hitRate ?? 0.8);
       return capNode(arrival, mu, servers, outgoing, effFail, {
         terminateProb: hit,
         cacheHits: 0, // filled below
@@ -290,19 +326,69 @@ function processNode(
     }
 
     case 'replicatedDb': {
-      // For a replicated DB the replica set size is a single knob (replicaCount):
-      // one primary plus read replicas. Each node has `concurrency` workers.
       const replicaCount = Math.max(1, node.replicaCount ?? 1);
       const writeFrac = clamp01(node.writeFraction ?? 0.2);
       const perNode = Math.max(1, node.concurrency);
-      // Reads spread across the whole set; writes are serialized on the primary.
+      const consistency = node.consistency ?? 'quorum';
+      const replicationLagMs = node.replicationLagMs ?? 5;
+      // Read capacity: spread across all replicas using read service time (serviceTimeMs).
       const readCap = mu * perNode * replicaCount;
-      const writeCap = mu * perNode;
+      // Write capacity: primary only, separate write service time + replication ack overhead.
+      const baseWriteMs = node.writeServiceTimeMs ?? node.serviceTimeMs;
+      const writeServiceMs = baseWriteMs + (consistency !== 'eventual' ? replicationLagMs : 0);
+      const writeMuEff = writeServiceMs > 0 ? 1000 / writeServiceMs : Infinity;
+      const writeCap = writeMuEff * perNode;
       const effectiveCapacity = 1 / ((1 - writeFrac) / readCap + writeFrac / writeCap);
       const totalServers = Math.max(1, Math.round(perNode * replicaCount));
-      const rt = capNodeWithCap(arrival, effectiveCapacity, totalServers, mu, outgoing, effFail, {});
+      // Use a synthetic M/M/1 queue (servers=1, mu=effectiveCapacity) so that
+      // rho and waitMs reflect the actual mixed read/write capacity rather than
+      // the read-only capacity, which would understate utilization when writes
+      // dominate. We restore the true server count for display afterward.
+      const rt = capNodeWithCap(arrival, effectiveCapacity, 1, effectiveCapacity, outgoing, effFail, {});
       rt.replicas = replicaCount;
+      rt.servers = totalServers;
       return rt;
+    }
+
+    case 'fanOut': {
+      const N = outgoing.length;
+      if (N === 0) {
+        return capNode(arrival, mu, servers, [], effFail, { terminateProb: 1 });
+      }
+      const k = Math.min(N, Math.max(1, node.scatterK ?? N));
+      const capacity = isFinite(mu) ? servers * mu : Infinity;
+      const dropped = isFinite(capacity) ? Math.max(0, arrival - capacity) : 0;
+      const processed = arrival - dropped;
+      const queue = mmcMetrics(processed, mu, servers);
+      const timeoutP = timeoutFailureProb(queue.responseMs, node.timeoutMs);
+      const serviceFail = combineFailureProbs(node.failureRate, timeoutP);
+      const localFail = arrival > 0 ? (dropped + processed * serviceFail) / arrival : 0;
+      // Each branch receives the FULL flow (not 1/N split) — this is what makes it fan-out.
+      const fanBranches: RouteBranch[] = outgoing.map((e) => ({
+        edgeId: e.id,
+        target: e.target,
+        prob: 1.0,
+      }));
+      const kOfNFail = fanOutFailProb(fanBranches, effFail, k);
+      const effFailProb = combineFailureProbs(localFail, kOfNFail);
+      const throughput = processed * (1 - serviceFail) * (1 - kOfNFail);
+      return {
+        cfg: node,
+        replicas,
+        servers,
+        arrival,
+        processed,
+        throughput,
+        failed: Math.max(0, arrival - throughput - dropped),
+        dropped,
+        retried: 0,
+        // Utilization uses offered arrival so it exceeds 1 when overloaded (intentional: see capacityNodeWithCap).
+        utilization: capacity > 0 && isFinite(capacity) ? arrival / capacity : 0,
+        queue,
+        effFailProb,
+        terminateProb: 0,
+        branches: fanBranches,
+      };
     }
 
     default: {
@@ -371,6 +457,8 @@ function capacityNodeWithCap(
     failed: failedInService,
     dropped,
     retried: 0,
+    // Utilization uses the raw offered arrival (not processed) so it exceeds 1
+    // when overloaded — intentional: the UI uses this to highlight bottlenecks.
     utilization: capacity > 0 && isFinite(capacity) ? arrival / capacity : 0,
     queue,
     effFailProb,

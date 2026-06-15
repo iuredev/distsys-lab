@@ -18,7 +18,8 @@ export type NodeKind =
   | 'circuitBreaker'
   | 'autoScaler'
   | 'externalDependency'
-  | 'rateLimiter';
+  | 'rateLimiter'
+  | 'fanOut';
 
 export type RejectBehavior = 'drop' | 'queue';
 
@@ -111,6 +112,8 @@ export interface NodeConfig {
   replicationLagMs?: number;
   /** Fraction of operations that are writes [0..1]. */
   writeFraction?: number;
+  /** Mean service time for write operations (ms). Defaults to serviceTimeMs when absent. */
+  writeServiceTimeMs?: number;
 
   // --- shardRouter ---
   shardCount?: number;
@@ -130,11 +133,22 @@ export interface NodeConfig {
   /** What happens to requests exceeding rateLimit: drop immediately or queue. */
   rejectBehavior?: RejectBehavior;
 
+  // --- fanOut ---
+  /** k-of-N scatter: wait for k responses before returning. undefined = wait for all. */
+  scatterK?: number;
+  // --- cache / cdn ---
+  /** Warm-up time constant (s). Cache builds hit rate from 0 toward target over this period. */
+  warmupSec?: number;
+
   // --- autoScaler ---
   /** Target utilization the scaler tries to hold [0..1]. */
   targetUtilization?: number;
   minReplicas?: number;
   maxReplicas?: number;
+  /** Minimum simulated seconds between consecutive scale-up events. */
+  scaleUpCooldownSec?: number;
+  /** Minimum simulated seconds between consecutive scale-down events. */
+  scaleDownCooldownSec?: number;
 }
 
 export interface EdgeSpec {
@@ -263,12 +277,13 @@ export function defaultsForKind(kind: NodeKind, id: string, label: string): Node
     case 'replicatedDb':
       return {
         ...base,
-        serviceTimeMs: 15,
+        serviceTimeMs: 10,
         concurrency: 8,
         replicaCount: 3,
         consistency: 'quorum',
         replicationLagMs: 5,
         writeFraction: 0.2,
+        writeServiceTimeMs: 20,
       };
     case 'shardRouter':
       return { ...base, serviceTimeMs: 2, concurrency: 16, shardCount: 4, skew: 0, shardStrategy: 'hash' };
@@ -285,11 +300,15 @@ export function defaultsForKind(kind: NodeKind, id: string, label: string): Node
         targetUtilization: 0.7,
         minReplicas: 1,
         maxReplicas: 20,
+        scaleUpCooldownSec: 30,
+        scaleDownCooldownSec: 60,
       };
     case 'externalDependency':
       return { ...base, serviceTimeMs: 80, concurrency: 8, failureRate: 0.01, latencyCv: 1.0 };
     case 'rateLimiter':
       return { ...base, serviceTimeMs: 1, concurrency: 32, replicas: 1, rateLimit: 100, burstCapacity: 200, rejectBehavior: 'drop' };
+    case 'fanOut':
+      return { ...base, serviceTimeMs: 2, concurrency: 64, replicas: 1 };
     default:
       return base;
   }
@@ -309,8 +328,15 @@ export function nodeCapacity(cfg: NodeConfig): number {
     const replicaCount = Math.max(1, cfg.replicaCount ?? 1);
     const writeFrac = Math.min(1, Math.max(0, cfg.writeFraction ?? 0.2));
     const perNode = Math.max(1, cfg.concurrency);
+    const consistency = cfg.consistency ?? 'quorum';
+    const replicationLagMs = cfg.replicationLagMs ?? 5;
+    // Read capacity: spread across all replicas using read service time.
     const readCap = mu * perNode * replicaCount;
-    const writeCap = mu * perNode;
+    // Write capacity: primary only, slower service time + replication ack overhead.
+    const baseWriteMs = cfg.writeServiceTimeMs ?? cfg.serviceTimeMs;
+    const writeServiceMs = baseWriteMs + (consistency !== 'eventual' ? replicationLagMs : 0);
+    const writeMuEff = writeServiceMs > 0 ? 1000 / writeServiceMs : Infinity;
+    const writeCap = writeMuEff * perNode;
     return 1 / ((1 - writeFrac) / readCap + writeFrac / writeCap);
   }
   const servers = Math.max(1, cfg.concurrency * cfg.replicas);

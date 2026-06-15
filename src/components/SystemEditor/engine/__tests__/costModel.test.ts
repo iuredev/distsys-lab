@@ -67,11 +67,13 @@ describe('estimateNodeCostPerHour', () => {
 
 describe('estimateCostFromMetrics', () => {
   it('matches the runtime estimate for compute nodes', () => {
-    expect(estimateCostFromMetrics('server', 2, 0, undefined, 'gcp')).toBeCloseTo(2 * 0.0395, 5);
+    // GCP n2-standard-2 baseline = $0.0971/hr
+    expect(estimateCostFromMetrics('server', 2, 0, undefined, 'gcp')).toBeCloseTo(2 * 0.0971, 5);
   });
 
   it('prices usage and external nodes from arrival', () => {
-    expect(estimateCostFromMetrics('messageQueue', 1, 1000, undefined, 'aws')).toBeCloseTo((1000 * 3600 / 1_000_000) * 1.0, 5);
+    // AWS SQS standard = $0.40/M messages
+    expect(estimateCostFromMetrics('messageQueue', 1, 1000, undefined, 'aws')).toBeCloseTo((1000 * 3600 / 1_000_000) * 0.40, 5);
     expect(estimateCostFromMetrics('externalDependency', 1, 1000, undefined, 'aws')).toBeCloseTo((1000 * 3600 / 1_000_000) * 5.0, 5);
   });
 

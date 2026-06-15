@@ -65,10 +65,13 @@ export function mmcMetrics(lambda: number, mu: number, c: number): QueueMetrics 
   const rho = a / servers;
 
   if (rho >= 1) {
-    // Unstable: model a heavily backed-up queue. Wait grows with how far over
-    // capacity we are, capped to keep the simulation numerically sane.
-    const overload = rho - 1;
-    const waitMs = Math.min(60000, serviceMs * (10 + overload * 200));
+    // Unstable: take the max of two terms so the formula is both continuous and
+    // monotonically increasing in overload:
+    //   • 1/max(ρ−1, 1e-3)  diverges as ρ→1⁺ (matches Erlang-C from below)
+    //   • (ρ−1)×200          grows linearly for severe overload (shows distress)
+    // The crossover is at ρ≈1.07; below it the diverging term dominates,
+    // above it the linear term takes over. Clamped to 60 s for the UI.
+    const waitMs = Math.min(60000, serviceMs * Math.max(1 / Math.max(rho - 1, 1e-3), (rho - 1) * 200));
     const responseMs = waitMs + serviceMs;
     const inSystem = (lambda * responseMs) / 1000;
     return {

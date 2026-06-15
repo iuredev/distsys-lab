@@ -81,7 +81,7 @@ export const INSTANCE_CPU_FACTOR: Record<string, number> = Object.values(INSTANC
   .reduce<Record<string, number>>((acc, s) => { acc[s.id] = s.cpuFactor; return acc; }, {});
 
 export function instanceCategory(kind: NodeKind): InstanceCategory | null {
-  if (kind === 'server' || kind === 'autoScaler') return 'compute';
+  if (kind === 'server' || kind === 'autoScaler' || kind === 'fanOut') return 'compute';
   if (kind === 'database' || kind === 'replicatedDb') return 'database';
   if (kind === 'cache') return 'cache';
   return null;
@@ -134,6 +134,7 @@ const COMPUTE_KINDS: NodeKind[] = [
   'cache',
   'circuitBreaker',
   'shardRouter',
+  'fanOut',
 ];
 
 /**
@@ -184,7 +185,7 @@ export function estimateNodeCostPerHour(rt: NodeRuntime, provider: CloudProvider
       const cat = instanceCategory(kind);
       const count = cat === 'database'
         ? (kind === 'replicatedDb' ? Math.max(1, rt.cfg.replicaCount ?? 1) : 1)
-        : Math.max(1, rt.cfg.replicas);
+        : Math.max(1, rt.replicas); // rt.replicas reflects autoscaler override; cfg.replicas is the static config
       return spec.pricePerHour * count;
     }
   }
@@ -258,6 +259,7 @@ export function productName(kind: NodeKind, provider: CloudProvider): string {
     case 'cdn':                return aws ? 'CloudFront' : 'Cloud CDN';
     case 'messageQueue':       return aws ? 'SQS' : 'Pub/Sub';
     case 'externalDependency': return aws ? 'Third-party API' : 'Third-party API';
+    case 'fanOut': return aws ? 'EC2 (aggregator)' : 'Compute Engine (aggregator)';
     default:                   return aws ? 'AWS' : 'GCP';
   }
 }
