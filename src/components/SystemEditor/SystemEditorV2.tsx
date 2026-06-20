@@ -19,7 +19,8 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { useTranslation } from 'react-i18next';
-import { Play, Pause, SkipForward, RotateCcw, Download, Upload, Settings2, Copy, Unplug, Zap, Trash2, ArrowDownUp, ArrowLeftRight, Undo2, Redo2, Plus, SlidersHorizontal, Boxes, Bookmark, BookOpen, type LucideIcon } from 'lucide-react';
+import { Play, Pause, SkipForward, RotateCcw, Download, Upload, Settings2, Copy, Unplug, Zap, Trash2, ArrowDownUp, ArrowLeftRight, Undo2, Redo2, Plus, SlidersHorizontal, Boxes, Bookmark, BookOpen, ChevronRight, type LucideIcon } from 'lucide-react';
+
 
 import {
   NodeConfig,
@@ -40,17 +41,6 @@ import Dashboard from './ui/Dashboard';
 import ScenarioBar from './ui/ScenarioBar';
 import { parseDesign, serializeDesign, SerializedNode, DesignV2, addSavedDesign, deleteSavedDesign, getSavedDesigns, SavedEntry, MAX_SAVES } from './ui/persistence';
 import { layoutGraph, LayoutDirection } from './ui/autoLayout';
-import { useGameContext } from './game/GameContext';
-import { architectureToRF, rfToArchitecture } from './game/architecture';
-import {
-  frameScore,
-  normalizeScoring,
-  emptyAccumulator,
-  accumulate,
-  type ScoreAccumulator,
-} from './engine/scoring';
-import GameBanner from './game/GameBanner';
-import GameLeaderboard from './game/GameLeaderboard';
 import { useIsTouchLayout } from './ui/useIsTouchLayout';
 import BottomSheet from './ui/BottomSheet';
 import MobilePalette from './ui/MobilePalette';
@@ -104,21 +94,15 @@ function ContextItem({
   );
 }
 
-function EditorInner({ gameId }: { gameId?: string }) {
+function EditorInner() {
   const { t, i18n } = useTranslation();
-  const { user } = useAuth();
+  const { user: _user } = useAuth();
 
   const toggleLng = () => {
     const next = i18n.language === 'pt' ? 'en' : 'pt';
     i18n.changeLanguage(next);
     localStorage.setItem('distsys-lab:lng', next);
   };
-  const game = useGameContext();
-  const gameState = game?.state ?? null;
-  const gameActive = !!gameId && !!game;
-  // During a live round players are locked out of editing; they build during
-  // intervals (and the lobby). Non-game sessions are always editable.
-  const frozen = gameActive && gameState?.phase === 'round';
   const [nodes, setNodes, onNodesChange] = useNodesState<SimNodeData>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -156,35 +140,16 @@ function EditorInner({ gameId }: { gameId?: string }) {
   type MobileSheet = 'palette' | 'scenario' | 'tools' | 'inspector' | null;
   const [sheet, setSheet] = useState<MobileSheet>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
+  const [inspectorOpen, setInspectorOpen] = useState(true);
 
   const simRef = useRef<Simulator | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const rf = useReactFlow();
 
-  // --- Game mode state (only used when gameId is set) ---
-  // Live refs so the synced run loop / score submitter read fresh values
-  // without re-subscribing on every poll.
-  const gameRef = useRef(game);
-  gameRef.current = game;
-  const gameStateRef = useRef(gameState);
-  gameStateRef.current = gameState;
-
-  // Latest-value freeze check for use inside callbacks (avoids re-creating them
-  // on every poll). Editing is blocked only while a round is live.
-  const isFrozen = useCallback(
-    () => gameActive && gameStateRef.current?.phase === 'round',
-    [gameActive],
-  );
-  const scoreRef = useRef<ScoreAccumulator>(emptyAccumulator());
-  const lastFrameRef = useRef<SimulationFrame | null>(null);
-  const seededKeyRef = useRef<string | null>(null);
-  const finalSubmittedRef = useRef<string | null>(null);
-
   const isNodeLocked = useCallback(
     (id: string | null) =>
       !!id && nodesRef.current.some((n) => n.id === id && n.data.config.locked),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
 
@@ -220,7 +185,7 @@ function EditorInner({ gameId }: { gameId?: string }) {
   }, []);
 
   const undo = useCallback(() => {
-    if (isFrozen()) return;
+    
     const previous = pastRef.current.pop();
     if (!previous) return;
     futureRef.current.push({ nodes: nodesRef.current, edges: edgesRef.current });
@@ -228,10 +193,10 @@ function EditorInner({ gameId }: { gameId?: string }) {
     setEdges(previous.edges);
     setSelectedId(null);
     setHistoryVersion((v) => v + 1);
-  }, [setNodes, setEdges, isFrozen]);
+  }, [setNodes, setEdges]);
 
   const redo = useCallback(() => {
-    if (isFrozen()) return;
+    
     const next = futureRef.current.pop();
     if (!next) return;
     pastRef.current.push({ nodes: nodesRef.current, edges: edgesRef.current });
@@ -239,10 +204,10 @@ function EditorInner({ gameId }: { gameId?: string }) {
     setEdges(next.edges);
     setSelectedId(null);
     setHistoryVersion((v) => v + 1);
-  }, [setNodes, setEdges, isFrozen]);
+  }, [setNodes, setEdges]);
 
-  const canUndo = pastRef.current.length > 0 && !frozen;
-  const canRedo = futureRef.current.length > 0 && !frozen;
+  const canUndo = pastRef.current.length > 0;
+  const canRedo = futureRef.current.length > 0;
 
   // Keyboard shortcuts: Cmd/Ctrl+Z = undo, Cmd/Ctrl+Shift+Z or Ctrl+Y = redo.
   // Ignored while typing in form fields so native text undo keeps working.
@@ -368,239 +333,11 @@ function EditorInner({ gameId }: { gameId?: string }) {
     setWarnings([]);
   }, [seed]);
 
-  // ===================== Game mode wiring =====================
-  // Seed the graph from the match's starting (or the player's saved) architecture
-  // once per match start, applying the admin's lock rules. Guarded so polling
-  // never clobbers the player's in-progress edits.
-  useEffect(() => {
-    if (!gameActive || !gameState) return;
-    // Wait until we've joined so we resume the player's saved build on rejoin
-    // rather than the pristine starting architecture.
-    if (!gameState.joined) return;
-    const arch = gameState.my_architecture ?? gameState.starting_architecture;
-    if (!arch) return;
-    const key = `${gameState.code}:${gameState.started_at ?? gameState.starts_at ?? 'lobby'}`;
-    if (seededKeyRef.current === key) return;
-    seededKeyRef.current = key;
-
-    const { nodes: gn, edges: ge } = architectureToRF(
-      arch,
-      gameState.locked_node_ids ?? [],
-      gameState.allow_delete_starting ?? true,
-    );
-    setRunning(false);
-    setNodes(gn);
-    setEdges(ge);
-    setSeed(gameState.seed);
-    setSelectedId(null);
-    simRef.current?.reset(gameState.seed);
-    setProfileType((gameState.load_profile?.type ?? 'constant') as LoadProfileType);
-    setProfileMultiplier(gameState.load_profile?.multiplier ?? 1);
-    setChaos(gameState.chaos_events ?? []);
-    scoreRef.current = emptyAccumulator();
-    lastFrameRef.current = null;
-    setMetrics({});
-    setHistory([]);
-    setTotalCost(0); setSuccessCount(0); setFailedCount(0);
-    pastRef.current = [];
-    futureRef.current = [];
-  }, [gameActive, gameState, setNodes, setEdges]);
-
-  // Keep lock state in sync with the admin's rules *after* seeding. The seed
-  // computes `locked` only once, so if the admin enables deletion (or toggles
-  // which components are locked) mid-match, re-apply it to the nodes already on
-  // canvas. We only flip the `locked`/`deletable` flags on existing seed nodes —
-  // never add back deleted nodes or lock player-added ones.
-  const lockedKey = (gameState?.locked_node_ids ?? []).join(',');
-  const allowDelete = gameState?.allow_delete_starting ?? true;
-  useEffect(() => {
-    if (!gameActive) return;
-    const lockSet = new Set(lockedKey ? lockedKey.split(',') : []);
-    const lockAll = !allowDelete;
-    setNodes((nds) =>
-      nds.map((n) => {
-        const cfg = n.data.config;
-        const isSeed = cfg.origin ? cfg.origin === 'seed' : true;
-        const locked = isSeed && (lockAll || lockSet.has(n.id));
-        if (!!cfg.locked === locked && n.deletable === !locked) return n;
-        return { ...n, deletable: !locked, data: { ...n.data, config: { ...cfg, locked } } };
-      }),
-    );
-  }, [gameActive, lockedKey, allowDelete, setNodes]);
-
-  // Live-sync the broadcast traffic profile (admin can change it mid-match).
-  useEffect(() => {
-    if (!gameActive || !gameState) return;
-    setProfileType((gameState.load_profile?.type ?? 'constant') as LoadProfileType);
-    setProfileMultiplier(gameState.load_profile?.multiplier ?? 1);
-  }, [gameActive, gameState?.load_profile?.type, gameState?.load_profile?.multiplier]);
-
-  // Live-sync the broadcast chaos timeline (admin injections appear here).
-  const chaosKey = gameActive ? JSON.stringify(gameState?.chaos_events ?? []) : '';
-  useEffect(() => {
-    if (!gameActive) return;
-    try {
-      setChaos(JSON.parse(chaosKey || '[]'));
-    } catch {
-      /* ignore */
-    }
-  }, [gameActive, chaosKey]);
-
-  // When a new round goes live, reset the deterministic sim and the per-round
-  // score accumulator so each round is scored independently (from t=0) against
-  // the player's carried-over architecture.
-  const roundKeyRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!gameActive || !gameState) return;
-    if (gameState.phase !== 'round' || !gameState.round_started_at) return;
-    const key = `${gameState.code}:r${gameState.current_round}:${gameState.round_started_at}`;
-    if (roundKeyRef.current === key) return;
-    roundKeyRef.current = key;
-    simRef.current?.reset(gameState.seed);
-    scoreRef.current = emptyAccumulator();
-    lastFrameRef.current = null;
-    setMetrics({});
-    setHistory([]);
-    setTotalCost(0); setSuccessCount(0); setFailedCount(0);
-  }, [gameActive, gameState?.phase, gameState?.current_round, gameState?.round_started_at]);
-
-  // Synced round loop: drive the deterministic sim by wall-clock round-time so
-  // all players experience the same traffic/chaos at the same simulated second.
-  // Runs only while the round is live (not during build intervals).
-  useEffect(() => {
-    if (!gameActive) return;
-    if (gameState?.phase !== 'round' || gameState?.status !== 'running' || !gameState.round_started_at)
-      return;
-    const startedMs = new Date(gameState.round_started_at).getTime();
-    const id = setInterval(() => {
-      const g = gameRef.current;
-      const gs = gameStateRef.current;
-      if (!g || !gs || gs.phase !== 'round') return;
-      const offset = g.serverOffsetMs ?? 0;
-      let target = Math.floor((Date.now() + offset - startedMs) / 1000);
-      if (gs.round_ends_at) {
-        const endTick = Math.floor((new Date(gs.round_ends_at).getTime() - startedMs) / 1000);
-        if (target > endTick) target = endTick;
-      }
-      const scoringCfg = normalizeScoring(gs.scoring_config);
-      let guard = 0;
-      let last = lastFrameRef.current;
-      while ((simRef.current?.currentTime ?? 0) < target && guard < 600) {
-        const frame = simRef.current?.tick();
-        if (frame) {
-          last = frame;
-          scoreRef.current = accumulate(
-            scoreRef.current,
-            frameScore(frame.system, scoringCfg),
-          );
-        }
-        guard++;
-      }
-      if (last && last !== lastFrameRef.current) {
-        lastFrameRef.current = last;
-        applyFrame(last);
-      }
-    }, 1000);
-    return () => clearInterval(id);
-  }, [gameActive, gameState?.phase, gameState?.status, gameState?.round_started_at, applyFrame]);
-
-  // Snapshot the latest "golden signals" from the most recent sim frame.
-  const gameMetrics = useCallback(() => {
-    const frame = lastFrameRef.current;
-    if (!frame) return undefined;
-    const sys = frame.system;
-    let saturation = 0;
-    for (const m of Object.values(frame.nodeMetrics)) {
-      if (m.utilization > saturation) saturation = m.utilization;
-    }
-    return {
-      throughput: sys.totalThroughput,
-      offered_load: sys.offeredLoad,
-      error_rate: sys.errorRate,
-      p50: sys.p50,
-      p95: sys.p95,
-      p99: sys.p99,
-      saturation,
-      cost_per_hour: sys.costPerHour,
-    };
-  }, []);
-
-  // While a round is live, periodically push the player's per-round score. The
-  // backend records it under the round index and recomputes the weighted total.
-  useEffect(() => {
-    if (!gameActive || gameState?.phase !== 'round') return;
-    const submit = () => {
-      const g = gameRef.current;
-      const gs = gameStateRef.current;
-      if (!g || !gs) return;
-      const roundIndex = Math.max(0, (gs.current_round ?? 1) - 1);
-      const roundScore = Math.round(scoreRef.current.total);
-      g.submitScore({
-        architecture: rfToArchitecture(nodesRef.current, edgesRef.current),
-        score: roundScore,
-        score_breakdown: scoreRef.current,
-        metrics: gameMetrics(),
-        round_index: roundIndex,
-        round_score: roundScore,
-        round_breakdown: scoreRef.current,
-      });
-    };
-    submit();
-    const id = setInterval(submit, 4000);
-    return () => clearInterval(id);
-  }, [gameActive, gameState?.phase, gameState?.current_round, gameMetrics]);
-
-  // During build intervals, persist the (carried-over) architecture so it
-  // survives a refresh/rejoin and is visible to the admin spectator.
-  useEffect(() => {
-    if (!gameActive) return;
-    const phase = gameState?.phase;
-    if (phase !== 'interval' && phase !== 'lobby') return;
-    const submit = () => {
-      const g = gameRef.current;
-      const gs = gameStateRef.current;
-      if (!g) return;
-      g.submitScore({
-        architecture: rfToArchitecture(nodesRef.current, edgesRef.current),
-        score: Math.round(gs?.my_score ?? 0),
-      });
-    };
-    const id = setInterval(submit, 5000);
-    return () => clearInterval(id);
-  }, [gameActive, gameState?.phase]);
-
-  // Submit the final per-round score once when a round ends (transition out of
-  // the 'round' phase), covering both the next interval and the match end.
-  const lastPhaseRef = useRef<string | null>(null);
-  useEffect(() => {
-    const prev = lastPhaseRef.current;
-    const cur = gameState?.phase ?? null;
-    lastPhaseRef.current = cur;
-    if (!gameActive) return;
-    if (prev !== 'round' || cur === 'round') return;
-    const g = gameRef.current;
-    const gs = gameStateRef.current;
-    if (!g || !gs) return;
-    const submitKey = `${gs.code}:r${gs.current_round}`;
-    if (finalSubmittedRef.current === submitKey) return;
-    finalSubmittedRef.current = submitKey;
-    const roundIndex = Math.max(0, (gs.current_round ?? 1) - 1);
-    const roundScore = Math.round(scoreRef.current.total);
-    g.submitScore({
-      architecture: rfToArchitecture(nodesRef.current, edgesRef.current),
-      score: roundScore,
-      score_breakdown: scoreRef.current,
-      metrics: gameMetrics(),
-      round_index: roundIndex,
-      round_score: roundScore,
-      round_breakdown: scoreRef.current,
-    });
-  }, [gameActive, gameState?.phase, gameMetrics]);
 
   // --- Node editing ---
   const patchSelected = useCallback(
     (patch: Partial<NodeConfig>) => {
-      if (!selectedId || isFrozen()) return;
+      if (!selectedId) return;
       // Coalesce rapid edits (e.g. dragging a slider) into one history entry.
       const now = Date.now();
       if (now - lastPatchAtRef.current > 600) takeSnapshot();
@@ -609,32 +346,31 @@ function EditorInner({ gameId }: { gameId?: string }) {
         nds.map((n) => (n.id === selectedId ? { ...n, data: { config: { ...n.data.config, ...patch } } } : n)),
       );
     },
-    [selectedId, setNodes, takeSnapshot, isFrozen],
+    [selectedId, setNodes, takeSnapshot],
   );
 
   const deleteSelected = useCallback(() => {
-    if (!selectedId || isNodeLocked(selectedId) || isFrozen()) return;
+    if (!selectedId || isNodeLocked(selectedId)) return;
     takeSnapshot();
     setNodes((nds) => nds.filter((n) => n.id !== selectedId));
     setEdges((eds) => eds.filter((e) => e.source !== selectedId && e.target !== selectedId));
     setSelectedId(null);
-  }, [selectedId, setNodes, setEdges, takeSnapshot, isNodeLocked, isFrozen]);
+  }, [selectedId, setNodes, setEdges, takeSnapshot, isNodeLocked]);
 
   // --- Context-menu actions (operate on an explicit node id) ---
   const deleteNode = useCallback(
     (id: string) => {
-      if (isNodeLocked(id) || isFrozen()) return;
+      if (isNodeLocked(id)) return;
       takeSnapshot();
       setNodes((nds) => nds.filter((n) => n.id !== id));
       setEdges((eds) => eds.filter((e) => e.source !== id && e.target !== id));
       setSelectedId((cur) => (cur === id ? null : cur));
     },
-    [setNodes, setEdges, takeSnapshot, isNodeLocked, isFrozen],
+    [setNodes, setEdges, takeSnapshot, isNodeLocked],
   );
 
   const duplicateNode = useCallback(
     (id: string) => {
-      if (isFrozen()) return;
       const src = nodes.find((n) => n.id === id);
       if (!src) return;
       takeSnapshot();
@@ -649,20 +385,18 @@ function EditorInner({ gameId }: { gameId?: string }) {
       setNodes((nds) => nds.concat(newNode));
       setSelectedId(newId);
     },
-    [nodes, setNodes, takeSnapshot, isFrozen],
+    [nodes, setNodes, takeSnapshot],
   );
 
   const disconnectNode = useCallback(
     (id: string) => {
-      if (isFrozen()) return;
       takeSnapshot();
       setEdges((eds) => eds.filter((e) => e.source !== id && e.target !== id));
     },
-    [setEdges, takeSnapshot, isFrozen],
+    [setEdges, takeSnapshot],
   );
 
   const killNode = useCallback((id: string) => {
-    if (isFrozen()) return;
     setChaos((c) => [
       ...c,
       {
@@ -673,24 +407,23 @@ function EditorInner({ gameId }: { gameId?: string }) {
         durationSec: 15,
       },
     ]);
-  }, [isFrozen]);
+  }, []);
 
   const deleteEdge = useCallback(
     (id: string) => {
-      if (isFrozen()) return;
+      
       takeSnapshot();
       setEdges((eds) => eds.filter((e) => e.id !== id));
     },
-    [setEdges, takeSnapshot, isFrozen],
+    [setEdges, takeSnapshot],
   );
 
   const setEdgeWeight = useCallback(
     (id: string, weight: number) => {
-      if (isFrozen()) return;
       takeSnapshot();
       setEdges((eds) => eds.map((e) => e.id === id ? { ...e, data: { ...e.data, weight } } : e));
     },
-    [setEdges, takeSnapshot, isFrozen],
+    [setEdges, takeSnapshot],
   );
 
   const handleSaveDesign = useCallback(() => {
@@ -799,7 +532,7 @@ function EditorInner({ gameId }: { gameId?: string }) {
 
   const onConnect = useCallback(
     (params: Connection | Edge) => {
-      if (isFrozen()) return;
+      
       const src = (params as Connection).source;
       const tgt = (params as Connection).target;
       if (!src || !tgt) return;
@@ -810,25 +543,25 @@ function EditorInner({ gameId }: { gameId?: string }) {
         return addEdge({ ...params, id: `e-${src}-${tgt}-${Date.now()}`, animated: true, style: { strokeWidth: 2.5 }, data: { weight: 1 } }, eds);
       });
     },
-    [setEdges, takeSnapshot, isFrozen],
+    [setEdges, takeSnapshot],
   );
 
   // Edge endpoint dragging: grab either end of an existing edge and rewire it.
   const edgeUpdateSuccessful = useRef(true);
 
   const onEdgeUpdateStart = useCallback(() => {
-    if (isFrozen()) return;
+    
     edgeUpdateSuccessful.current = false;
-  }, [isFrozen]);
+  }, []);
 
   const onEdgeUpdate = useCallback(
     (oldEdge: Edge, newConnection: Connection) => {
-      if (isFrozen()) return;
+      
       edgeUpdateSuccessful.current = true;
       takeSnapshot();
       setEdges((eds) => updateEdge(oldEdge, newConnection, eds));
     },
-    [setEdges, takeSnapshot, isFrozen],
+    [setEdges, takeSnapshot],
   );
 
   const onEdgeUpdateEnd = useCallback(
@@ -860,14 +593,14 @@ function EditorInner({ gameId }: { gameId?: string }) {
   // Auto-arrange the whole graph into clean ranks and re-fit the viewport.
   const applyLayout = useCallback(
     (direction: LayoutDirection) => {
-      if (isFrozen()) return;
+      
       takeSnapshot();
       const { nodes: laidOut, edges: rewired } = layoutGraph(nodes, edges, direction);
       setNodes(laidOut);
       setEdges(rewired);
       window.requestAnimationFrame(() => rf.fitView({ padding: 0.3, duration: 400 }));
     },
-    [nodes, edges, setNodes, setEdges, rf, takeSnapshot, isFrozen],
+    [nodes, edges, setNodes, setEdges, rf, takeSnapshot],
   );
 
   const onNodesDelete = useCallback(
@@ -886,7 +619,7 @@ function EditorInner({ gameId }: { gameId?: string }) {
   const onNodeDragStart = useCallback(
     (_e: React.MouseEvent, node: Node) => {
       takeSnapshot();
-      if (!altHeldRef.current || isFrozen() || isNodeLocked(node.id)) return;
+      if (!altHeldRef.current || isNodeLocked(node.id)) return;
       // Alt held: leave a clone at the original position; the dragged node becomes the copy.
       const typedNode = node as RFNode;
       const newId = `n${Date.now()}`;
@@ -900,7 +633,7 @@ function EditorInner({ gameId }: { gameId?: string }) {
         } as RFNode),
       );
     },
-    [setNodes, takeSnapshot, isFrozen, isNodeLocked],
+    [setNodes, takeSnapshot, isNodeLocked],
   );
 
   const onDragStart = (event: React.DragEvent, kind: NodeKind) => {
@@ -916,7 +649,7 @@ function EditorInner({ gameId }: { gameId?: string }) {
   // Shared node creation used by both desktop drag-drop and touch tap-to-add.
   const addNodeAt = useCallback(
     (kind: NodeKind, position: { x: number; y: number }) => {
-      if (isFrozen()) return undefined;
+      
       takeSnapshot();
       const id = `n${Date.now()}`;
       const count = nodesRef.current.filter((n) => n.data.config.kind === kind).length + 1;
@@ -925,7 +658,7 @@ function EditorInner({ gameId }: { gameId?: string }) {
       setNodes((nds) => nds.concat(newNode));
       return id;
     },
-    [setNodes, t, takeSnapshot, isFrozen],
+    [setNodes, t, takeSnapshot],
   );
 
   const onDrop = useCallback(
@@ -968,8 +701,9 @@ function EditorInner({ gameId }: { gameId?: string }) {
       setMetrics({});
       setHistory([]);
       setTotalCost(0); setSuccessCount(0); setFailedCount(0);
+      window.requestAnimationFrame(() => rf.fitView({ padding: 0.4, duration: 400 }));
     },
-    [setNodes, setEdges, takeSnapshot],
+    [setNodes, setEdges, takeSnapshot, rf],
   );
 
   const exportDesign = useCallback(() => {
@@ -1066,8 +800,8 @@ function EditorInner({ gameId }: { gameId?: string }) {
       return {
         ...e,
         label: `${pct}%`,
-        labelStyle: { fontSize: 10, fill: '#8a909c', fontFamily: 'JetBrains Mono, monospace', fontWeight: 500 },
-        labelBgStyle: { fill: '#16161a', fillOpacity: 0.95 },
+        labelStyle: { fontSize: 10, fill: '#7a9088', fontFamily: 'JetBrains Mono, monospace', fontWeight: 500 },
+        labelBgStyle: { fill: '#10161d', fillOpacity: 0.95 },
         labelBgPadding: [3, 4] as [number, number],
         labelBgBorderRadius: 2,
       };
@@ -1079,14 +813,14 @@ function EditorInner({ gameId }: { gameId?: string }) {
 
   return (
     <MetricsContext.Provider value={{ metrics, running, selectedId }}>
-      <div className="p-2 md:p-3 max-w-[1920px] mx-auto">
+      <div className="p-2 md:p-3 pb-10 max-w-[1920px] mx-auto">
         {/* Instrument header strip */}
         <div className="flex items-center gap-0 h-10 mb-5 border-b border-tactical-line">
           <div className="flex items-center gap-2.5 pr-4 mr-4 border-r border-tactical-line">
-            <svg width="22" height="14" viewBox="0 0 22 14" fill="none" className="shrink-0 text-signal-green">
+            <svg width="22" height="14" viewBox="0 0 22 14" fill="none" className="shrink-0 text-signal-green" style={{ filter: 'drop-shadow(0 0 4px #22d3a0)' }}>
               <path d="M0 7 L4 7 L5 2 L7 12 L9 7 L13 7 L14 4 L15 10 L16 7 L22 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
-            <span className="font-mono text-[11px] font-medium tracking-[0.16em] text-tactical-text uppercase select-none">
+            <span className="font-mono text-[11px] font-medium tracking-[0.16em] text-signal-green uppercase select-none">
               DistSys Lab
             </span>
           </div>
@@ -1128,30 +862,25 @@ function EditorInner({ gameId }: { gameId?: string }) {
           </div>
         </div>
 
-        {/* Game-mode status bar (replaces manual sim controls when in a match) */}
-        {gameActive && <GameBanner />}
-
         {/* Toolbar */}
         <div className={`flex items-center gap-2.5 mb-4 bg-tactical-raised border border-tactical-border rounded-lg px-4 ${isTouch ? 'overflow-x-auto py-2.5' : 'flex-wrap py-2.5'}`}>
-          {!gameActive && (
-            <>
-              <button
-                onClick={() => setRunning((r) => !r)}
-                className={`${btn} ${running ? 'border-signal-red text-signal-red hover:bg-signal-red/10' : 'border-signal-green text-signal-green hover:bg-signal-green/10'}`}
-              >
-                {running ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                {running ? t('editor.buttons.stop', { defaultValue: 'Pause' }) : t('editor.buttons.start', { defaultValue: 'Run' })}
-              </button>
-              <button onClick={step} className={`${btn} border-tactical-border text-tactical-dim hover:border-signal-cyan hover:text-signal-cyan`}>
-                <SkipForward className="w-4 h-4" /> {t('editor.buttons.step', { defaultValue: 'Step' })}
-              </button>
-              <button onClick={reset} className={`${btn} border-tactical-border text-tactical-dim hover:border-signal-cyan hover:text-signal-cyan`}>
-                <RotateCcw className="w-4 h-4" /> {t('editor.buttons.reset', { defaultValue: 'Reset' })}
-              </button>
+          <>
+            <button
+              onClick={() => setRunning((r) => !r)}
+              className={`${btn} ${running ? 'border-signal-red text-signal-red hover:bg-signal-red/10' : 'border-signal-green text-signal-green hover:bg-signal-green/10'}`}
+            >
+              {running ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+              {running ? t('editor.buttons.stop', { defaultValue: 'Pause' }) : t('editor.buttons.start', { defaultValue: 'Run' })}
+            </button>
+            <button onClick={step} className={`${btn} border-tactical-border text-tactical-dim hover:border-signal-cyan hover:text-signal-cyan`}>
+              <SkipForward className="w-4 h-4" /> {t('editor.buttons.step', { defaultValue: 'Step' })}
+            </button>
+            <button onClick={reset} className={`${btn} border-tactical-border text-tactical-dim hover:border-signal-cyan hover:text-signal-cyan`}>
+              <RotateCcw className="w-4 h-4" /> {t('editor.buttons.reset', { defaultValue: 'Reset' })}
+            </button>
 
-              <div className="border-l border-tactical-line h-8 mx-1 shrink-0" />
-            </>
-          )}
+            <div className="border-l border-tactical-line h-8 mx-1 shrink-0" />
+          </>
 
           <button
             onClick={undo}
@@ -1178,19 +907,17 @@ function EditorInner({ gameId }: { gameId?: string }) {
               <div className="border-l border-tactical-line h-8 mx-1 shrink-0" />
               <button
                 onClick={() => applyLayout('vertical')}
-                disabled={frozen}
                 title={t('editor.buttons.arrange_vertical', { defaultValue: 'Arrange vertically' })}
                 aria-label={t('editor.buttons.arrange_vertical', { defaultValue: 'Arrange vertically' })}
-                className={`${iconBtn} border-tactical-border text-tactical-dim hover:border-signal-cyan hover:text-signal-cyan disabled:opacity-40 disabled:cursor-not-allowed`}
+                className={`${iconBtn} border-tactical-border text-tactical-dim hover:border-signal-cyan hover:text-signal-cyan`}
               >
                 <ArrowDownUp className="w-4 h-4" />
               </button>
               <button
                 onClick={() => applyLayout('horizontal')}
-                disabled={frozen}
                 title={t('editor.buttons.arrange_horizontal', { defaultValue: 'Arrange horizontally' })}
                 aria-label={t('editor.buttons.arrange_horizontal', { defaultValue: 'Arrange horizontally' })}
-                className={`${iconBtn} border-tactical-border text-tactical-dim hover:border-signal-cyan hover:text-signal-cyan disabled:opacity-40 disabled:cursor-not-allowed`}
+                className={`${iconBtn} border-tactical-border text-tactical-dim hover:border-signal-cyan hover:text-signal-cyan`}
               >
                 <ArrowLeftRight className="w-4 h-4" />
               </button>
@@ -1198,7 +925,7 @@ function EditorInner({ gameId }: { gameId?: string }) {
           )}
 
           {/* Desktop advanced inline controls (speed / seed / export / import). */}
-          {!gameActive && !isTouch && (
+          {!isTouch && (
             <>
               <div className="border-l border-tactical-line h-8 mx-1 shrink-0" />
 
@@ -1250,11 +977,9 @@ function EditorInner({ gameId }: { gameId?: string }) {
               <button onClick={() => setSheet('palette')} className={`${btn} border-signal-cyan text-signal-cyan hover:bg-signal-cyan/10`}>
                 <Plus className="w-4 h-4" /> {t('editor.labels.components', { defaultValue: 'Components' })}
               </button>
-              {!gameActive && (
-                <button onClick={() => setSheet('scenario')} className={`${btn} border-tactical-border text-tactical-dim`}>
-                  <Boxes className="w-4 h-4" /> {t('editor.mobile.scenario', { defaultValue: 'Scenario' })}
-                </button>
-              )}
+              <button onClick={() => setSheet('scenario')} className={`${btn} border-tactical-border text-tactical-dim`}>
+                <Boxes className="w-4 h-4" /> {t('editor.mobile.scenario', { defaultValue: 'Scenario' })}
+              </button>
               <button onClick={() => setSheet('tools')} className={`${btn} border-tactical-border text-tactical-dim`}>
                 <SlidersHorizontal className="w-4 h-4" /> {t('editor.mobile.tools', { defaultValue: 'Tools' })}
               </button>
@@ -1262,9 +987,7 @@ function EditorInner({ gameId }: { gameId?: string }) {
           )}
 
           {/* Hidden file input shared by desktop toolbar and the Tools sheet. */}
-          {!gameActive && (
-            <input type="file" ref={fileInputRef} accept=".din" className="hidden" onChange={importDesign} />
-          )}
+          <input type="file" ref={fileInputRef} accept=".din" className="hidden" onChange={importDesign} />
         </div>
 
         {importError && (
@@ -1272,7 +995,7 @@ function EditorInner({ gameId }: { gameId?: string }) {
         )}
 
         {/* Saved designs panel */}
-        {showSaves && !gameActive && (
+        {showSaves && (
           <div className="tactical-panel mb-4">
             <div className="flex items-center gap-2 px-4 py-2.5 border-b border-tactical-border">
               <Bookmark className="w-3.5 h-3.5 text-signal-cyan" />
@@ -1325,9 +1048,8 @@ function EditorInner({ gameId }: { gameId?: string }) {
           </div>
         )}
 
-        {/* Scenario controls (admin-driven in game mode, so hidden for players;
-            on touch they live in the Scenario bottom sheet). */}
-        {!gameActive && !isTouch && (
+        {/* Scenario controls (on touch they live in the Scenario bottom sheet). */}
+        {!isTouch && (
           <div className="tactical-panel mb-4">
             <div className="flex items-center gap-2 px-4 py-2.5 border-b border-tactical-border">
               <span className="label-mono">{t('editor.labels.scenario', { defaultValue: 'Scenario' })}</span>
@@ -1354,7 +1076,7 @@ function EditorInner({ gameId }: { gameId?: string }) {
           className="flex gap-0 tactical-panel overflow-hidden"
           style={{ height: isTouch ? '62vh' : 640, minHeight: isTouch ? 380 : 640 }}
         >
-          <div className={`flex-1 relative ${isTouch ? 'rf-touch' : ''}`} ref={canvasRef}>
+          <div className={`flex-1 relative min-w-0 ${isTouch ? 'rf-touch' : ''}`} ref={canvasRef}>
             {isTouch && (
               <style>{`
                 .rf-controls-touch .react-flow__controls-button{width:34px;height:34px;}
@@ -1369,9 +1091,6 @@ function EditorInner({ gameId }: { gameId?: string }) {
               onConnect={onConnect}
               isValidConnection={isValidConnection}
               connectionMode={ConnectionMode.Loose}
-              nodesDraggable={!frozen}
-              nodesConnectable={!frozen}
-              edgesUpdatable={!frozen}
               onEdgeUpdateStart={onEdgeUpdateStart}
               onEdgeUpdate={onEdgeUpdate}
               onEdgeUpdateEnd={onEdgeUpdateEnd}
@@ -1389,7 +1108,7 @@ function EditorInner({ gameId }: { gameId?: string }) {
               onPaneClick={() => { setSelectedId(null); setSelectedEdgeId(null); closeMenu(); }}
               onMoveStart={closeMenu}
               nodeTypes={nodeTypes}
-              deleteKeyCode={frozen ? null : ['Backspace', 'Delete']}
+              deleteKeyCode={['Backspace', 'Delete']}
               fitView
               fitViewOptions={{ padding: 0.4, maxZoom: 1 }}
               minZoom={0.2}
@@ -1407,10 +1126,10 @@ function EditorInner({ gameId }: { gameId?: string }) {
                       return (
                         <div
                           key={kind}
-                          draggable={!frozen}
-                          onDragStart={(e) => { if (frozen) { e.preventDefault(); return; } onDragStart(e, kind); }}
+                          draggable
+                          onDragStart={(e) => onDragStart(e, kind)}
                           title={t(`editor.descriptions.${kind}`)}
-                          className={`px-2 py-1.5 rounded-md bg-slate-50 dark:bg-tactical-raised border font-sans text-[11px] text-slate-700 dark:text-tactical-text flex items-center gap-1.5 ${frozen ? 'opacity-40 cursor-not-allowed' : 'cursor-move hover:bg-slate-100 dark:hover:bg-tactical-line'}`}
+                          className="px-2 py-1.5 rounded-md bg-slate-50 dark:bg-tactical-raised border font-sans text-[11px] text-slate-700 dark:text-tactical-text flex items-center gap-1.5 cursor-move hover:bg-slate-100 dark:hover:bg-tactical-line"
                           style={{ borderColor: entry.hex + '4d' }}
                         >
                           <Icon className="w-3.5 h-3.5 shrink-0" style={{ color: entry.hex }} />
@@ -1419,11 +1138,6 @@ function EditorInner({ gameId }: { gameId?: string }) {
                       );
                     })}
                   </div>
-                </Panel>
-              )}
-              {gameActive && game && !isTouch && (
-                <Panel position="top-right" className="w-60">
-                  <GameLeaderboard entries={game.leaderboard} currentUserId={user?.uid} />
                 </Panel>
               )}
               <Controls className={isTouch ? 'rf-controls-touch' : undefined} showInteractive={!isTouch} />
@@ -1436,10 +1150,10 @@ function EditorInner({ gameId }: { gameId?: string }) {
                   zoomable
                 />
               )}
-              <Background variant={BackgroundVariant.Dots} gap={22} size={1} color="#2a2a36" />
+              <Background variant={BackgroundVariant.Dots} gap={22} size={1} color="#1a2029" />
             </ReactFlow>
 
-            {nodes.length === 0 && !gameActive && (
+            {nodes.length === 0 && (
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none select-none" style={{ zIndex: 4 }}>
                 <div className="label-mono mb-1 text-tactical-label">empty canvas</div>
                 <div className="font-mono text-[11px] text-tactical-label opacity-60">drag a component from the palette to start</div>
@@ -1517,11 +1231,22 @@ function EditorInner({ gameId }: { gameId?: string }) {
                 )}
               </div>
             )}
+            {/* Inspector toggle button — sits on the right edge of the canvas */}
+            {!isTouch && (
+              <button
+                onClick={() => setInspectorOpen((o) => !o)}
+                title={inspectorOpen ? 'Collapse inspector' : 'Expand inspector'}
+                aria-label={inspectorOpen ? 'Collapse inspector' : 'Expand inspector'}
+                className="absolute right-0 top-1/2 -translate-y-1/2 z-20 h-14 w-4 bg-tactical-raised border-y border-l border-tactical-border rounded-l-md flex items-center justify-center text-tactical-label hover:text-signal-green hover:bg-tactical-line transition-colors"
+              >
+                <ChevronRight className={`w-3 h-3 transition-transform duration-200 ${inspectorOpen ? '' : 'rotate-180'}`} />
+              </button>
+            )}
           </div>
 
           {/* Desktop side panel. On touch this content moves into a bottom sheet. */}
           {!isTouch && (
-            <div className="w-[22rem] shrink-0 border-l border-slate-200 dark:border-tactical-border bg-white dark:bg-tactical-surface">
+            <div className={`shrink-0 border-l border-slate-200 dark:border-tactical-border bg-white dark:bg-tactical-surface overflow-hidden transition-all duration-200 ease-out ${inspectorOpen ? 'w-[22rem]' : 'w-0'}`}>
               {showBill ? (
                 <CostPanel
                   nodes={nodes.map((n) => ({ id: n.id, config: n.data.config }))}
@@ -1531,7 +1256,7 @@ function EditorInner({ gameId }: { gameId?: string }) {
                   onClose={() => setShowBill(false)}
                 />
               ) : (
-                <InspectorPanel config={selectedConfig} onChange={patchSelected} onDelete={deleteSelected} canDelete={!selectedConfig?.locked} readOnly={gameActive && selectedConfig?.kind === 'client'} gameMode={gameActive} provider={provider} />
+                <InspectorPanel config={selectedConfig} onChange={patchSelected} onDelete={deleteSelected} canDelete={!selectedConfig?.locked} provider={provider} />
               )}
             </div>
           )}
@@ -1576,12 +1301,11 @@ function EditorInner({ gameId }: { gameId?: string }) {
                   onClose={() => { setShowBill(false); setSheet(null); }}
                 />
               ) : (
-                <InspectorPanel config={selectedConfig} onChange={patchSelected} onDelete={() => { deleteSelected(); setSheet(null); }} canDelete={!selectedConfig?.locked} readOnly={gameActive && selectedConfig?.kind === 'client'} gameMode={gameActive} />
+                <InspectorPanel config={selectedConfig} onChange={patchSelected} onDelete={() => { deleteSelected(); setSheet(null); }} canDelete={!selectedConfig?.locked} />
               )}
             </BottomSheet>
 
-            {!gameActive && (
-              <>
+            <>
                 <BottomSheet
                   open={sheet === 'scenario'}
                   onClose={() => setSheet(null)}
@@ -1687,8 +1411,7 @@ function EditorInner({ gameId }: { gameId?: string }) {
                     </div>
                   </div>
                 </BottomSheet>
-              </>
-            )}
+            </>
           </>
         )}
       </div>
@@ -1697,10 +1420,10 @@ function EditorInner({ gameId }: { gameId?: string }) {
   );
 }
 
-export default function SystemEditorV2({ gameId }: { gameId?: string } = {}) {
+export default function SystemEditorV2() {
   return (
     <ReactFlowProvider>
-      <EditorInner gameId={gameId} />
+      <EditorInner />
     </ReactFlowProvider>
   );
 }
