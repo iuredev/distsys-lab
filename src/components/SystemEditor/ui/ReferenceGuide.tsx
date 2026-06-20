@@ -3,21 +3,21 @@ import { useTranslation } from 'react-i18next';
 import { ArrowLeft, Users, Network, Shield, HardDrive, Server, Database as DatabaseIcon, Layers, Split, MessageSquare, Zap, TrendingUp, Globe, Gauge, type LucideIcon } from 'lucide-react';
 import { GUIDE_EN, GUIDE_PT, type GuideContent } from './guideContent';
 
-// Visual-only metadata — icons and accent colors, not translated
-const NODE_META: { icon: LucideIcon; accent: string }[] = [
-  { icon: Users,        accent: 'border-blue-500' },
-  { icon: Network,      accent: 'border-green-500' },
-  { icon: Shield,       accent: 'border-indigo-500' },
-  { icon: HardDrive,    accent: 'border-pink-500' },
-  { icon: Server,       accent: 'border-purple-500' },
-  { icon: TrendingUp,   accent: 'border-cyan-500' },
-  { icon: Zap,          accent: 'border-red-500' },
-  { icon: MessageSquare,accent: 'border-orange-500' },
-  { icon: Split,        accent: 'border-teal-500' },
-  { icon: DatabaseIcon, accent: 'border-yellow-500' },
-  { icon: Layers,       accent: 'border-amber-500' },
-  { icon: Globe,        accent: 'border-slate-400' },
-  { icon: Gauge,        accent: 'border-lime-500' },
+// Visual-only metadata — icons and kind hex colors, not translated
+const NODE_META: { icon: LucideIcon; hex: string }[] = [
+  { icon: Users,        hex: '#3b82f6' },
+  { icon: Network,      hex: '#22c55e' },
+  { icon: Shield,       hex: '#6366f1' },
+  { icon: HardDrive,    hex: '#ec4899' },
+  { icon: Server,       hex: '#a855f7' },
+  { icon: TrendingUp,   hex: '#06b6d4' },
+  { icon: Zap,          hex: '#ef4444' },
+  { icon: MessageSquare,hex: '#f97316' },
+  { icon: Split,        hex: '#14b8a6' },
+  { icon: DatabaseIcon, hex: '#eab308' },
+  { icon: Layers,       hex: '#f59e0b' },
+  { icon: Globe,        hex: '#94a3b8' },
+  { icon: Gauge,        hex: '#84cc16' },
 ];
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -54,7 +54,7 @@ function NodesTab({ c }: { c: GuideContent }) {
   return (
     <div className="space-y-3">
       {c.nodes.map((nd, i) => {
-        const { icon: Icon, accent } = NODE_META[i] ?? { icon: Server, accent: 'border-slate-500' };
+        const { icon: Icon, hex } = NODE_META[i] ?? { icon: Server, hex: '#64748b' };
         const open = active === nd.name;
         return (
           <div key={nd.name} className="bg-tactical-raised border border-tactical-border rounded-lg overflow-hidden">
@@ -62,8 +62,8 @@ function NodesTab({ c }: { c: GuideContent }) {
               onClick={() => setActive(open ? null : nd.name)}
               className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-tactical-line/30 transition-colors"
             >
-              <div className={`w-7 h-7 rounded flex items-center justify-center border-l-2 ${accent} bg-tactical-surface shrink-0`}>
-                <Icon className="w-3.5 h-3.5 text-tactical-text" />
+              <div className="w-7 h-7 rounded flex items-center justify-center bg-tactical-surface border shrink-0" style={{ borderColor: hex + '4d' }}>
+                <Icon className="w-3.5 h-3.5" style={{ color: hex }} />
               </div>
               <span className="font-mono text-[13px] text-tactical-text font-medium">{nd.name}</span>
               <span className="font-sans text-[11px] text-tactical-dim flex-1 truncate hidden sm:block">{nd.description.slice(0, 90)}…</span>

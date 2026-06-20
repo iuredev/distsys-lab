@@ -39,7 +39,7 @@ function HintIcon({ hint }: { hint?: string }) {
       </button>
       {open && (
         <div
-          className="absolute z-50 left-4 top-0 w-56 normal-case tracking-normal bg-white dark:bg-tactical-surface border border-slate-200 dark:border-tactical-border rounded-lg shadow-lg p-2 font-sans text-[11px] leading-relaxed text-slate-700 dark:text-tactical-text"
+          className="absolute z-50 left-4 top-0 w-56 normal-case tracking-normal bg-white dark:bg-tactical-surface border border-slate-200 dark:border-tactical-border rounded-lg shadow-lg dark:shadow-none p-2 font-sans text-[11px] leading-relaxed text-slate-700 dark:text-tactical-text"
           onClick={(e) => e.stopPropagation()}
         >
           {hint}
@@ -148,8 +148,8 @@ export default function InspectorPanel({ config, onChange, onDelete, canDelete =
   const tuningChange = tuningLocked ? () => {} : onChange;
   if (!config) {
     return (
-      <div className="p-4 font-sans text-xs text-tactical-label">
-        <div className="font-sans text-[11px] font-medium text-slate-600 dark:text-signal-amber mb-2">{t('editor.inspector.title', { defaultValue: 'Inspector' })}</div>
+      <div className="p-5 font-sans text-xs text-tactical-label">
+        <div className="font-sans text-[12px] font-semibold text-tactical-dim mb-2">{t('editor.inspector.title', { defaultValue: 'Inspector' })}</div>
         {t('editor.inspector.empty', { defaultValue: 'Select a node to edit its configuration.' })}
       </div>
     );
@@ -160,9 +160,9 @@ export default function InspectorPanel({ config, onChange, onDelete, canDelete =
   const capacity = nodeCapacity(config);
 
   return (
-    <div className="p-4 overflow-y-auto h-full">
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2 font-sans text-sm font-bold text-tactical-text">
+    <div className="p-5 overflow-y-auto h-full">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2 font-sans text-[14px] font-semibold text-tactical-text">
           <Icon className="w-4 h-4" />
           {t(`editor.kinds.${config.kind}`)}
         </div>
@@ -177,7 +177,7 @@ export default function InspectorPanel({ config, onChange, onDelete, canDelete =
         )}
       </div>
 
-      <div className="mb-4 border-l-2 border-signal-cyan/60 bg-signal-cyan/5 rounded-r-md px-3 py-2">
+      <div className="mb-5 border border-signal-cyan/30 bg-signal-cyan/5 rounded-md px-3.5 py-2.5">
         <div className="font-sans text-[11px] font-medium text-signal-cyan mb-1">{t('editor.how_to_use')}</div>
         <p className="font-sans text-[11px] leading-relaxed text-tactical-dim">
           {t(`editor.descriptions.${config.kind}`)}
@@ -185,7 +185,7 @@ export default function InspectorPanel({ config, onChange, onDelete, canDelete =
       </div>
 
       {readOnly && (
-        <div className="mb-4 border-l-2 border-signal-amber/60 bg-signal-amber/5 rounded-r-md px-3 py-2">
+        <div className="mb-4 border border-signal-amber/30 bg-signal-amber/5 rounded-md px-3 py-2">
           <p className="font-sans text-[11px] leading-relaxed text-signal-amber">
             {t('editor.inspector.admin_controlled', { defaultValue: 'Traffic for this node is controlled by the match admin.' })}
           </p>
@@ -223,7 +223,7 @@ export default function InspectorPanel({ config, onChange, onDelete, canDelete =
         {/* Instance type selector — compute / database / cache nodes only */}
         {instanceCategory(config.kind) !== null && (
           <>
-            <div className="font-sans text-[11px] font-medium text-slate-600 dark:text-signal-amber mt-1 mb-2">
+            <div className="font-sans text-[10px] font-semibold uppercase tracking-widest text-tactical-label border-t border-tactical-border pt-4 mt-5 mb-3">
               {t('editor.inspector.machine_type_section', { defaultValue: 'Machine type' })}
             </div>
             <Select
@@ -248,16 +248,16 @@ export default function InspectorPanel({ config, onChange, onDelete, canDelete =
         {/* Reliability + latency-shape: fixed by the match, never player-tunable */}
         <div className={gameMode && !readOnly ? 'pointer-events-none opacity-60 select-none' : undefined}>
           {/* Reliability */}
-          <div className="flex items-center gap-1 font-sans text-[11px] font-medium text-slate-600 dark:text-signal-amber mt-2 mb-2">
+          <div className="flex items-center gap-1.5 font-sans text-[10px] font-semibold uppercase tracking-widest text-tactical-label border-t border-tactical-border pt-4 mt-5 mb-3">
             {t('editor.inspector.reliability')}
-            {tuningLocked && <span className="font-normal text-tactical-label normal-case">· {t('editor.inspector.match_fixed', { defaultValue: 'fixed by match' })}</span>}
+            {tuningLocked && <span className="font-normal normal-case tracking-normal">· {t('editor.inspector.match_fixed', { defaultValue: 'fixed by match' })}</span>}
           </div>
           <Num label={t('editor.inspector.failure_rate')} hint={t('editor.hints.failure_rate')} value={Math.round(config.failureRate * 100)} min={0} max={100} unit="%" onChange={(v) => tuningChange({ failureRate: v / 100 })} />
           <Num label={t('editor.inspector.timeout')} hint={t('editor.hints.timeout')} value={config.timeoutMs} min={50} max={10000} step={50} unit="ms" onChange={(v) => tuningChange({ timeoutMs: v })} />
           <Num label={t('editor.inspector.max_retries')} hint={t('editor.hints.max_retries')} value={config.retry?.maxRetries ?? 0} min={0} max={6} onChange={(v) => tuningChange({ retry: { maxRetries: v, backoffBaseMs: config.retry?.backoffBaseMs ?? 50, jitter: config.retry?.jitter ?? true } })} />
 
           {/* Latency shape */}
-          <div className="font-sans text-[11px] font-medium text-slate-600 dark:text-signal-amber mt-2 mb-2">{t('editor.inspector.latency_shape')}</div>
+          <div className="font-sans text-[10px] font-semibold uppercase tracking-widest text-tactical-label border-t border-tactical-border pt-4 mt-5 mb-3">{t('editor.inspector.latency_shape')}</div>
           <Select
             label={t('editor.inspector.distribution')}
             hint={t('editor.hints.distribution')}
@@ -356,12 +356,12 @@ function renderKindControls(config: NodeConfig, onChange: (patch: Partial<NodeCo
             onChange={(v) => onChange({ consistency: v })}
           />
           <Num label={t('editor.inspector.replication_lag')} hint={t('editor.hints.replication_lag')} value={config.replicationLagMs ?? 5} min={0} max={500} step={5} unit="ms" onChange={(v) => onChange({ replicationLagMs: v })} />
-          <div className="font-sans text-[11px] font-medium text-slate-600 dark:text-signal-amber mt-2 mb-2">
+          <div className="font-sans text-[10px] font-semibold uppercase tracking-widest text-tactical-label border-t border-tactical-border pt-4 mt-4 mb-3">
             {t('editor.inspector.op_mix')}
           </div>
           <Num label={t('editor.inspector.read_fraction')} hint={t('editor.hints.read_fraction')} value={Math.round(readFrac * 100)} min={0} max={100} unit="%" onChange={(v) => onChange({ writeFraction: Math.max(0, 1 - v / 100) })} />
           <Num label={t('editor.inspector.write_fraction')} hint={t('editor.hints.write_fraction')} value={Math.round(writeFrac * 100)} min={0} max={100} unit="%" onChange={(v) => onChange({ writeFraction: v / 100 })} />
-          <div className="font-sans text-[11px] font-medium text-slate-600 dark:text-signal-amber mt-2 mb-2">
+          <div className="font-sans text-[10px] font-semibold uppercase tracking-widest text-tactical-label border-t border-tactical-border pt-4 mt-4 mb-3">
             {t('editor.inspector.service_times')}
           </div>
           <Num label={t('editor.inspector.read_service_time')} hint={t('editor.hints.read_service_time')} value={config.serviceTimeMs} min={1} max={500} unit="ms" onChange={(v) => onChange({ serviceTimeMs: v })} />

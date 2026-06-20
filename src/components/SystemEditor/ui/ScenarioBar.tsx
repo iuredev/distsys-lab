@@ -69,7 +69,7 @@ export default function ScenarioBar({
             </select>
             <button
               onClick={() => onLoadPreset(presetId)}
-              className="border border-signal-cyan text-signal-cyan rounded-md px-3 py-1 font-sans text-xs hover:bg-signal-cyan/10"
+              className="border border-signal-cyan text-signal-cyan rounded-md px-3 py-1 font-sans text-xs hover:bg-signal-cyan/10 transition-colors"
             >
               {t('editor.scenario.load')}
             </button>
@@ -114,7 +114,7 @@ export default function ScenarioBar({
             </select>
             <button
               onClick={addChaos}
-              className="border border-signal-red text-signal-red rounded-md px-3 py-1 font-sans text-xs hover:bg-signal-red/10"
+              className="border border-signal-red text-signal-red rounded-md px-3 py-1 font-sans text-xs hover:bg-signal-red/10 transition-colors"
             >
               {t('editor.scenario.inject')}
             </button>

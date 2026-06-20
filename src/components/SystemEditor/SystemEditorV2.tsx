@@ -1079,14 +1079,14 @@ function EditorInner({ gameId }: { gameId?: string }) {
 
   return (
     <MetricsContext.Provider value={{ metrics, running, selectedId }}>
-      <div className="p-3 md:p-5 max-w-[1680px] mx-auto">
+      <div className="p-2 md:p-3 max-w-[1920px] mx-auto">
         {/* Instrument header strip */}
-        <div className="flex items-center gap-0 h-9 mb-4 border-b border-tactical-line">
+        <div className="flex items-center gap-0 h-10 mb-5 border-b border-tactical-line">
           <div className="flex items-center gap-2.5 pr-4 mr-4 border-r border-tactical-line">
             <svg width="22" height="14" viewBox="0 0 22 14" fill="none" className="shrink-0 text-signal-green">
               <path d="M0 7 L4 7 L5 2 L7 12 L9 7 L13 7 L14 4 L15 10 L16 7 L22 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
-            <span className="font-mono text-[11px] font-bold tracking-[0.14em] text-tactical-text uppercase select-none">
+            <span className="font-mono text-[11px] font-medium tracking-[0.16em] text-tactical-text uppercase select-none">
               DistSys Lab
             </span>
           </div>
@@ -1132,7 +1132,7 @@ function EditorInner({ gameId }: { gameId?: string }) {
         {gameActive && <GameBanner />}
 
         {/* Toolbar */}
-        <div className={`flex items-center gap-2 mb-3 bg-tactical-raised border border-tactical-border rounded-lg px-3 ${isTouch ? 'overflow-x-auto py-2' : 'flex-wrap py-2'}`}>
+        <div className={`flex items-center gap-2.5 mb-4 bg-tactical-raised border border-tactical-border rounded-lg px-4 ${isTouch ? 'overflow-x-auto py-2.5' : 'flex-wrap py-2.5'}`}>
           {!gameActive && (
             <>
               <button
@@ -1274,7 +1274,7 @@ function EditorInner({ gameId }: { gameId?: string }) {
         {/* Saved designs panel */}
         {showSaves && !gameActive && (
           <div className="tactical-panel mb-4">
-            <div className="flex items-center gap-2 px-3 py-2 border-b border-tactical-border">
+            <div className="flex items-center gap-2 px-4 py-2.5 border-b border-tactical-border">
               <Bookmark className="w-3.5 h-3.5 text-signal-cyan" />
               <span className="label-mono">saved designs</span>
               <span className="font-mono text-[10px] text-tactical-label ml-0.5">({savedDesigns.length}/{MAX_SAVES})</span>
@@ -1329,10 +1329,10 @@ function EditorInner({ gameId }: { gameId?: string }) {
             on touch they live in the Scenario bottom sheet). */}
         {!gameActive && !isTouch && (
           <div className="tactical-panel mb-4">
-            <div className="flex items-center gap-2 px-3 py-2 border-b border-tactical-border">
+            <div className="flex items-center gap-2 px-4 py-2.5 border-b border-tactical-border">
               <span className="label-mono">{t('editor.labels.scenario', { defaultValue: 'Scenario' })}</span>
             </div>
-            <div className="p-3">
+            <div className="p-4">
             <ScenarioBar
               profileType={profileType}
               onProfileChange={setProfileType}
@@ -1352,7 +1352,7 @@ function EditorInner({ gameId }: { gameId?: string }) {
         {/* Canvas + inspector */}
         <div
           className="flex gap-0 tactical-panel overflow-hidden"
-          style={{ height: isTouch ? '60vh' : 600, minHeight: isTouch ? 380 : undefined }}
+          style={{ height: isTouch ? '62vh' : 640, minHeight: isTouch ? 380 : 640 }}
         >
           <div className={`flex-1 relative ${isTouch ? 'rf-touch' : ''}`} ref={canvasRef}>
             {isTouch && (
@@ -1398,8 +1398,8 @@ function EditorInner({ gameId }: { gameId?: string }) {
               {/* Desktop drag-and-drop palette. On touch this is replaced by the
                   tap-to-add MobilePalette in a bottom sheet. */}
               {!isTouch && (
-                <Panel position="top-left" className="bg-white/95 dark:bg-tactical-surface/95 border border-slate-200 dark:border-tactical-border rounded-lg p-3 backdrop-blur-sm max-h-[520px] overflow-y-auto">
-                  <div className="font-sans text-[11px] font-medium text-slate-500 dark:text-tactical-label mb-2">{t('editor.labels.components', { defaultValue: 'Components' })}</div>
+                <Panel position="top-left" className="bg-white/95 dark:bg-tactical-surface/95 border border-slate-200 dark:border-tactical-border rounded-lg p-3.5 backdrop-blur-sm max-h-[calc(100vh-200px)] overflow-y-auto">
+                  <div className="font-sans text-[10px] font-semibold uppercase tracking-widest text-tactical-label mb-3">{t('editor.labels.components', { defaultValue: 'Components' })}</div>
                   <div className="grid grid-cols-2 gap-1.5">
                     {PALETTE_ORDER.map((kind) => {
                       const entry = NODE_CATALOG[kind];
@@ -1410,9 +1410,10 @@ function EditorInner({ gameId }: { gameId?: string }) {
                           draggable={!frozen}
                           onDragStart={(e) => { if (frozen) { e.preventDefault(); return; } onDragStart(e, kind); }}
                           title={t(`editor.descriptions.${kind}`)}
-                          className={`px-2 py-1.5 rounded-md bg-slate-50 dark:bg-tactical-raised border-l-2 ${entry.accent} font-sans text-[11px] text-slate-700 dark:text-tactical-text flex items-center gap-1.5 ${frozen ? 'opacity-40 cursor-not-allowed' : 'cursor-move hover:bg-slate-100 dark:hover:bg-tactical-line'}`}
+                          className={`px-2 py-1.5 rounded-md bg-slate-50 dark:bg-tactical-raised border font-sans text-[11px] text-slate-700 dark:text-tactical-text flex items-center gap-1.5 ${frozen ? 'opacity-40 cursor-not-allowed' : 'cursor-move hover:bg-slate-100 dark:hover:bg-tactical-line'}`}
+                          style={{ borderColor: entry.hex + '4d' }}
                         >
-                          <Icon className="w-3.5 h-3.5" />
+                          <Icon className="w-3.5 h-3.5 shrink-0" style={{ color: entry.hex }} />
                           {t(`editor.kinds.${kind}`, { defaultValue: KIND_DEFAULT_LABEL[kind] })}
                         </div>
                       );
@@ -1435,7 +1436,7 @@ function EditorInner({ gameId }: { gameId?: string }) {
                   zoomable
                 />
               )}
-              <Background variant={BackgroundVariant.Lines} gap={28} color="#1a1a22" />
+              <Background variant={BackgroundVariant.Dots} gap={22} size={1} color="#2a2a36" />
             </ReactFlow>
 
             {nodes.length === 0 && !gameActive && (
@@ -1468,7 +1469,7 @@ function EditorInner({ gameId }: { gameId?: string }) {
 
             {menu && (
               <div
-                className="absolute z-50 min-w-[180px] bg-white dark:bg-tactical-surface border border-slate-200 dark:border-tactical-border rounded-lg shadow-lg py-1"
+                className="absolute z-50 min-w-[180px] bg-white dark:bg-tactical-surface border border-slate-200 dark:border-tactical-border rounded-lg shadow-lg dark:shadow-none py-1"
                 style={{ left: Math.min(menu.x, (canvasRef.current?.clientWidth ?? 9999) - 190), top: menu.y }}
                 onClick={(e) => e.stopPropagation()}
               >
@@ -1520,7 +1521,7 @@ function EditorInner({ gameId }: { gameId?: string }) {
 
           {/* Desktop side panel. On touch this content moves into a bottom sheet. */}
           {!isTouch && (
-            <div className="w-80 shrink-0 border-l border-slate-200 dark:border-tactical-border bg-white dark:bg-tactical-surface">
+            <div className="w-[22rem] shrink-0 border-l border-slate-200 dark:border-tactical-border bg-white dark:bg-tactical-surface">
               {showBill ? (
                 <CostPanel
                   nodes={nodes.map((n) => ({ id: n.id, config: n.data.config }))}
@@ -1537,7 +1538,7 @@ function EditorInner({ gameId }: { gameId?: string }) {
         </div>
 
         {/* Dashboard */}
-        <div className="mt-4">
+        <div className="mt-6">
           <Dashboard
             history={history}
             totalCost={totalCost}

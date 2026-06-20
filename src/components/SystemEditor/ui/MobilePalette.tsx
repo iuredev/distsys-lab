@@ -29,9 +29,10 @@ export default function MobilePalette({ onAdd }: Props) {
               type="button"
               onClick={() => onAdd(kind)}
               title={t(`editor.descriptions.${kind}`)}
-              className={`min-h-[52px] px-3 py-2 rounded-lg bg-slate-50 dark:bg-tactical-raised active:bg-slate-100 dark:active:bg-tactical-line border-l-2 ${entry.accent} font-sans text-xs text-slate-700 dark:text-tactical-text flex items-center gap-2 text-left transition-colors`}
+              className={`min-h-[52px] px-3 py-2 rounded-lg bg-slate-50 dark:bg-tactical-raised active:bg-slate-100 dark:active:bg-tactical-line border font-sans text-xs text-slate-700 dark:text-tactical-text flex items-center gap-2 text-left transition-colors`}
+              style={{ borderColor: entry.hex + '4d' }}
             >
-              <Icon className="w-4 h-4 shrink-0" />
+              <Icon className="w-4 h-4 shrink-0" style={{ color: entry.hex }} />
               <span className="truncate">
                 {t(`editor.kinds.${kind}`, { defaultValue: KIND_DEFAULT_LABEL[kind] })}
               </span>

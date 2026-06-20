@@ -41,7 +41,7 @@ const handleStyle = {
 function utilColor(util: number): string {
   if (util >= 1) return '#ef4444';
   if (util >= 0.8) return '#eab308';
-  return '#22c55e';
+  return '#34d399';
 }
 
 /**
@@ -87,9 +87,9 @@ function ReplicaStack({ count, label }: { count: number; label: string }) {
                 height: active ? '100%' : '22%',
                 backgroundColor: active
                   ? pulse === 'up' && i === shown - 1
-                    ? '#22c55e'
-                    : '#22d3ee'
-                  : '#1f2937',
+                    ? '#34d399'
+                    : '#56b6c8'
+                  : '#2f2f36',
                 opacity: active ? 1 : 0.5,
               }}
             />
@@ -264,7 +264,7 @@ function SimNodeImpl({ id, data, isConnectable, selected }: NodeProps<SimNodeDat
     : {};
 
   return (
-    <div className="relative" style={{ minWidth: 190 }}>
+    <div className="relative" style={{ minWidth: 220 }}>
       {/* Stacked cards behind the box visualise multiple replicas. */}
       {Array.from({ length: stackLayers }).map((_, i) => (
         <div
@@ -276,7 +276,7 @@ function SimNodeImpl({ id, data, isConnectable, selected }: NodeProps<SimNodeDat
       ))}
 
       <div
-        className={`relative px-3 py-2 border-2 ${alertBorder} bg-tactical-surface transition-[border-color,box-shadow] duration-500 ${
+        className={`relative px-4 py-3 border-2 ${alertBorder} bg-tactical-surface transition-[border-color,box-shadow] duration-500 ${
           selected ? 'ring-2 ring-signal-cyan' : ''
         }`}
         style={alertGlow}
@@ -325,7 +325,7 @@ function SimNodeImpl({ id, data, isConnectable, selected }: NodeProps<SimNodeDat
       </div>
 
       {metrics ? (
-        <div className="mt-2 text-[11px] font-mono space-y-0.5">
+        <div className="mt-2 text-[11px] font-mono space-y-1">
           <MetricRow label={t('editor.node.in')} value={`${metrics.arrivalRate}/s`} tone="text-yellow-300" />
           <MetricRow label={t('editor.node.out')} value={`${metrics.throughput}/s`} tone="text-green-300" />
           <MetricRow label={t('editor.node.p95')} value={`${metrics.p95.toFixed(0)}ms`} tone="text-cyan-300" />
@@ -339,7 +339,7 @@ function SimNodeImpl({ id, data, isConnectable, selected }: NodeProps<SimNodeDat
       )}
 
       {config.kind !== 'client' && (
-        <div className="mt-1.5 h-1.5 bg-tactical-line overflow-hidden">
+        <div className="mt-2 h-1.5 bg-tactical-line overflow-hidden">
           <div className="h-full transition-all duration-300" style={{ width: `${Math.min(100, util * 100)}%`, backgroundColor: utilColor(util) }} />
         </div>
       )}

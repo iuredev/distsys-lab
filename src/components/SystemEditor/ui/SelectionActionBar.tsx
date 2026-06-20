@@ -54,7 +54,7 @@ export default function SelectionActionBar(props: Props) {
 
   return (
     <div className="absolute z-50 left-1/2 -translate-x-1/2 bottom-3 max-w-[calc(100%-1rem)]">
-      <div className="flex items-stretch divide-x divide-slate-200 dark:divide-tactical-border bg-white/95 dark:bg-tactical-surface/95 border border-slate-200 dark:border-tactical-border rounded-xl shadow-lg backdrop-blur-sm overflow-x-auto">
+      <div className="flex items-stretch divide-x divide-slate-200 dark:divide-tactical-border bg-white/95 dark:bg-tactical-surface/95 border border-slate-200 dark:border-tactical-border rounded-xl shadow-lg dark:shadow-none backdrop-blur-sm overflow-x-auto">
         {props.mode === 'node' ? (
           <>
             <Action icon={Settings2} label={t('editor.menu.edit')} onClick={props.onEdit} />

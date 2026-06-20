@@ -45,10 +45,10 @@ function Stat({ label, value, tone, onClick, title }: { label: string; value: st
     <div
       onClick={onClick}
       title={title}
-      className={`border border-tactical-border bg-tactical-raised rounded-lg px-3 py-2 ${onClick ? 'cursor-pointer hover:border-signal-cyan transition-colors' : ''}`}
+      className={`border border-tactical-border bg-tactical-raised rounded-lg px-3.5 py-2.5 ${onClick ? 'cursor-pointer hover:border-signal-cyan transition-colors' : ''}`}
     >
-      <div className="font-sans text-[10px] font-medium text-slate-500 dark:text-tactical-label">{label}</div>
-      <div className={`font-mono text-lg font-bold ${tone ?? 'text-tactical-text'}`}>{value}</div>
+      <div className="font-sans text-[11px] font-medium text-tactical-label">{label}</div>
+      <div className={`font-mono text-lg font-bold leading-tight mt-0.5 ${tone ?? 'text-tactical-text'}`}>{value}</div>
     </div>
   );
 }
@@ -73,14 +73,14 @@ function GoldenSignal({
   dataKey: string;
 }) {
   return (
-    <div className="border border-tactical-border bg-tactical-raised rounded-lg px-3 py-2.5">
-      <div className="font-sans text-[10px] font-medium text-slate-500 dark:text-tactical-label">{label}</div>
-      <div className={`font-mono font-bold leading-none mt-1 ${tone}`}>
+    <div className="border border-tactical-border bg-tactical-raised rounded-lg px-4 py-3">
+      <div className="font-sans text-[11px] font-medium text-tactical-label">{label}</div>
+      <div className={`font-mono font-bold leading-none mt-1.5 ${tone}`}>
         <span className="text-2xl">{value}</span>
         <span className="text-xs text-tactical-label ml-1">{unit}</span>
       </div>
-      <div className="font-sans text-[10px] text-slate-500 dark:text-tactical-label mt-1">{hint}</div>
-      <div style={{ width: '100%', height: 36 }} className="mt-2">
+      <div className="font-sans text-[10px] text-tactical-label mt-1">{hint}</div>
+      <div style={{ width: '100%', height: 40 }} className="mt-2.5">
         <ResponsiveContainer>
           <AreaChart data={series} margin={{ top: 2, right: 0, bottom: 0, left: 0 }}>
             <Area type="monotone" dataKey={dataKey} stroke={accent} fill={`${accent}22`} strokeWidth={1.5} dot={false} isAnimationActive={false} />
@@ -91,8 +91,8 @@ function GoldenSignal({
   );
 }
 
-const axis = { stroke: '#475569', fontSize: 10, fontFamily: 'monospace' };
-const gridStroke = '#1f2937';
+const axis = { stroke: '#8a909c', fontSize: 10, fontFamily: 'monospace' };
+const gridStroke = '#26262b';
 
 function formatWarning(w: string, t: (k: string, o?: Record<string, unknown>) => string): string {
   const [code, name] = w.split(':');
@@ -136,13 +136,13 @@ export default function Dashboard({ history, totalCost, costPerHour, successCoun
   const saturationTone = saturationPct >= 100 ? 'text-signal-red' : saturationPct >= 80 ? 'text-signal-amber' : 'text-signal-green';
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {/* Four Golden Signals (Google SRE) */}
       <div>
-        <div className="font-sans text-[11px] font-medium text-slate-600 dark:text-signal-amber mb-2">
+        <div className="font-sans text-[13px] font-semibold tracking-tight text-signal-amber mb-3">
           {t('editor.dashboard.golden_title', { defaultValue: 'Four Golden Signals' })}
         </div>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
           <GoldenSignal
             label={t('editor.dashboard.golden.latency', { defaultValue: 'Latency' })}
             value={`${latency}`}
@@ -186,7 +186,7 @@ export default function Dashboard({ history, totalCost, costPerHour, successCoun
         </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 gap-2.5">
         <Stat label={t('editor.dashboard.offered')} value={`${Math.round(latest?.offeredLoad ?? 0)}/s`} />
         <Stat label={t('editor.dashboard.throughput')} value={`${Math.round(latest?.totalThroughput ?? 0)}/s`} tone="text-signal-green" />
         <Stat label={t('editor.dashboard.success')} value={`${((latest?.successRate ?? 1) * 100).toFixed(1)}%`} tone={successTone} />
@@ -199,35 +199,35 @@ export default function Dashboard({ history, totalCost, costPerHour, successCoun
 
       {/* Error budget bar */}
       <div>
-        <div className="flex justify-between font-sans text-[10px] font-medium text-slate-500 dark:text-tactical-label mb-1">
-          <span>{t('editor.dashboard.error_budget', { slo: SLO_SUCCESS * 100 })}</span>
-          <span>{errorBudgetUsed.toFixed(0)}%</span>
+        <div className="flex justify-between items-baseline mb-1.5">
+          <span className="font-sans text-[11px] font-medium text-tactical-label">{t('editor.dashboard.error_budget', { slo: SLO_SUCCESS * 100 })}</span>
+          <span className="font-mono text-[11px] text-tactical-dim">{errorBudgetUsed.toFixed(0)}%</span>
         </div>
-        <div className="h-2 bg-tactical-line overflow-hidden">
+        <div className="h-2 bg-tactical-line overflow-hidden rounded-full">
           <div
-            className="h-full transition-all"
-            style={{ width: `${errorBudgetUsed}%`, backgroundColor: errorBudgetUsed >= 100 ? '#ef4444' : errorBudgetUsed >= 70 ? '#eab308' : '#22c55e' }}
+            className="h-full transition-all duration-500 ease-out"
+            style={{ width: `${errorBudgetUsed}%`, backgroundColor: errorBudgetUsed >= 100 ? '#ef4444' : errorBudgetUsed >= 70 ? '#eab308' : '#34d399' }}
           />
         </div>
       </div>
 
       {warnings.length > 0 && (
-        <div className="border border-signal-amber/50 bg-signal-amber/10 rounded-lg p-2 font-sans text-[11px] text-signal-amber space-y-0.5">
+        <div className="border border-signal-amber/50 bg-signal-amber/10 rounded-lg p-3 font-sans text-[11px] text-signal-amber space-y-1">
           {warnings.slice(0, 6).map((w) => (
             <div key={w}>⚠ {formatWarning(w, t)}</div>
           ))}
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         <ChartCard title={t('editor.dashboard.chart_throughput')}>
           <AreaChart data={data}>
             <CartesianGrid stroke={gridStroke} strokeDasharray="3 3" />
             <XAxis dataKey="t" {...axis} />
             <YAxis {...axis} />
             <Tooltip contentStyle={tooltipStyle} />
-            <Area type="monotone" dataKey="offered" stroke="#64748b" fill="#64748b22" />
-            <Area type="monotone" dataKey="throughput" stroke="#22c55e" fill="#22c55e33" />
+            <Area type="monotone" dataKey="offered" stroke="#8a909c" fill="#8a909c22" />
+            <Area type="monotone" dataKey="throughput" stroke="#34d399" fill="#34d39933" />
           </AreaChart>
         </ChartCard>
 
@@ -237,7 +237,7 @@ export default function Dashboard({ history, totalCost, costPerHour, successCoun
             <XAxis dataKey="t" {...axis} />
             <YAxis {...axis} />
             <Tooltip contentStyle={tooltipStyle} />
-            <Line type="monotone" dataKey="p50" stroke="#06b6d4" dot={false} />
+            <Line type="monotone" dataKey="p50" stroke="#56b6c8" dot={false} />
             <Line type="monotone" dataKey="p95" stroke="#eab308" dot={false} />
             <Line type="monotone" dataKey="p99" stroke="#ef4444" dot={false} />
           </LineChart>
@@ -250,7 +250,7 @@ export default function Dashboard({ history, totalCost, costPerHour, successCoun
             <YAxis yAxisId="l" domain={[0, 100]} {...axis} />
             <YAxis yAxisId="r" orientation="right" {...axis} />
             <Tooltip contentStyle={tooltipStyle} />
-            <Line yAxisId="l" type="monotone" dataKey="success" stroke="#22c55e" dot={false} />
+            <Line yAxisId="l" type="monotone" dataKey="success" stroke="#34d399" dot={false} />
             <Line yAxisId="r" type="monotone" dataKey="inFlight" stroke="#a855f7" dot={false} />
           </LineChart>
         </ChartCard>
@@ -264,17 +264,17 @@ export default function Dashboard({ history, totalCost, costPerHour, successCoun
 }
 
 const tooltipStyle = {
-  background: '#0f172a',
-  border: '1px solid #334155',
+  background: '#101012',
+  border: '1px solid #26262b',
   fontFamily: 'monospace',
   fontSize: 11,
 };
 
 function ChartCard({ title, children }: { title: string; children: React.ReactElement }) {
   return (
-    <div className="border border-tactical-border bg-tactical-surface rounded-lg p-2">
-      <div className="font-sans text-[10px] font-medium text-slate-500 dark:text-tactical-label mb-1">{title}</div>
-      <div style={{ width: '100%', height: 160 }}>
+    <div className="border border-tactical-border bg-tactical-surface rounded-lg p-3.5">
+      <div className="font-sans text-[11px] font-semibold text-tactical-text mb-2.5">{title}</div>
+      <div style={{ width: '100%', height: 176 }}>
         <ResponsiveContainer>{children}</ResponsiveContainer>
       </div>
     </div>

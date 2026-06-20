@@ -42,7 +42,7 @@ export default function BottomSheet({ open, onClose, title, maxHeightVh = 80, ch
       <div
         role="dialog"
         aria-modal="true"
-        className={`absolute inset-x-0 bottom-0 flex flex-col bg-white dark:bg-tactical-surface border-t border-slate-200 dark:border-tactical-border shadow-2xl transition-transform duration-200 ease-out ${
+        className={`absolute inset-x-0 bottom-0 flex flex-col bg-white dark:bg-tactical-surface border-t border-slate-200 dark:border-tactical-border shadow-2xl dark:shadow-none transition-transform duration-200 ease-out ${
           open ? 'translate-y-0' : 'translate-y-full'
         }`}
         style={{ maxHeight: `${maxHeightVh}vh` }}
