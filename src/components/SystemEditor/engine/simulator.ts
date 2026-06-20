@@ -315,8 +315,7 @@ export class Simulator {
         });
       }
     });
-    const endToEndFail = clientLoad > 0 ? entryFail / clientLoad : 0;
-    const totalThroughput = success * (1 - endToEndFail);
+    const totalThroughput = Math.max(0, clientLoad > 0 ? clientLoad - entryFail : success);
     const failedRate = Math.max(0, offered - totalThroughput);
     const errorRate = offered > 0 ? failedRate / offered : 0;
 
