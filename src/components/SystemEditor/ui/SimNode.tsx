@@ -34,14 +34,14 @@ const handleStyle = {
   width: 10,
   height: 10,
   borderRadius: 9999,
-  background: '#2f2f36',
-  border: '2px solid #0a0a0b',
+  background: '#1f262f',
+  border: '2px solid #060a0f',
 };
 
 function utilColor(util: number): string {
-  if (util >= 1) return '#ef4444';
-  if (util >= 0.8) return '#eab308';
-  return '#34d399';
+  if (util >= 1) return '#f05252';
+  if (util >= 0.8) return '#f59e0b';
+  return '#22d3a0';
 }
 
 /**
@@ -87,9 +87,9 @@ function ReplicaStack({ count, label }: { count: number; label: string }) {
                 height: active ? '100%' : '22%',
                 backgroundColor: active
                   ? pulse === 'up' && i === shown - 1
-                    ? '#34d399'
-                    : '#56b6c8'
-                  : '#2f2f36',
+                    ? '#22d3a0'
+                    : '#60a5fa'
+                  : '#223228',
                 opacity: active ? 1 : 0.5,
               }}
             />
@@ -141,7 +141,7 @@ function KindExtras({ kind, config, metrics, t }: { kind: string; config: NodeCo
               key={i}
               className="h-2 flex-1"
               style={{
-                backgroundColor: pct >= (i + 1) * 10 ? (pct >= 90 ? '#ef4444' : pct >= 80 ? '#eab308' : '#f97316') : '#1f2937',
+                backgroundColor: pct >= (i + 1) * 10 ? (pct >= 90 ? '#f05252' : pct >= 80 ? '#f59e0b' : '#f97316') : '#1f262f',
               }}
             />
           ))}
@@ -165,7 +165,7 @@ function KindExtras({ kind, config, metrics, t }: { kind: string; config: NodeCo
         <MetricRow label={t('editor.node.rate_cap')} value={`${Math.round(metrics.throughput)}/${limit}/s`} tone="text-lime-300" />
         {metrics.droppedRate > 0 && <MetricRow label={t('editor.node.dropped_s')} value={`${metrics.droppedRate}`} tone="text-red-300" />}
         <div className="mt-1 h-1 bg-tactical-line overflow-hidden">
-          <div className="h-full transition-all duration-300" style={{ width: `${pct}%`, backgroundColor: pct >= 95 ? '#ef4444' : '#84cc16' }} />
+          <div className="h-full transition-all duration-300" style={{ width: `${pct}%`, backgroundColor: pct >= 95 ? '#f05252' : '#84cc16' }} />
         </div>
       </>
     );
@@ -192,7 +192,7 @@ function KindExtras({ kind, config, metrics, t }: { kind: string; config: NodeCo
               <div
                 key={i}
                 className="flex-1 rounded-[1px] transition-all duration-300 ease-out"
-                style={{ height: '100%', backgroundColor: i === 0 ? '#f59e0b' : '#38bdf8' }}
+                style={{ height: '100%', backgroundColor: i === 0 ? '#f59e0b' : '#60a5fa' }}
                 title={i === 0 ? t('editor.node.primary') : `${t('editor.node.replica')} ${i}`}
               />
             ))}
@@ -215,7 +215,7 @@ function KindExtras({ kind, config, metrics, t }: { kind: string; config: NodeCo
               <div
                 key={i}
                 className="flex-1 transition-all duration-300 ease-out"
-                style={{ height: `${Math.max(8, ratio * 100)}%`, backgroundColor: hot ? '#f59e0b' : '#2dd4bf' }}
+                style={{ height: `${Math.max(8, ratio * 100)}%`, backgroundColor: hot ? '#f59e0b' : '#22d3a0' }}
                 title={`shard ${i}: ${l}/s`}
               />
             );
@@ -264,7 +264,7 @@ function SimNodeImpl({ id, data, isConnectable, selected }: NodeProps<SimNodeDat
     : {};
 
   return (
-    <div className="relative" style={{ minWidth: 220 }}>
+    <div className="relative" style={{ minWidth: 190 }}>
       {/* Stacked cards behind the box visualise multiple replicas. */}
       {Array.from({ length: stackLayers }).map((_, i) => (
         <div
@@ -276,7 +276,7 @@ function SimNodeImpl({ id, data, isConnectable, selected }: NodeProps<SimNodeDat
       ))}
 
       <div
-        className={`relative px-4 py-3 border-2 ${alertBorder} bg-tactical-surface transition-[border-color,box-shadow] duration-500 ${
+        className={`relative px-3 py-2 border-2 ${alertBorder} bg-tactical-surface transition-[border-color,box-shadow] duration-500 ${
           selected ? 'ring-2 ring-signal-cyan' : ''
         }`}
         style={alertGlow}
@@ -325,7 +325,7 @@ function SimNodeImpl({ id, data, isConnectable, selected }: NodeProps<SimNodeDat
       </div>
 
       {metrics ? (
-        <div className="mt-2 text-[11px] font-mono space-y-1">
+        <div className="mt-2 text-[11px] font-mono space-y-0.5">
           <MetricRow label={t('editor.node.in')} value={`${metrics.arrivalRate}/s`} tone="text-yellow-300" />
           <MetricRow label={t('editor.node.out')} value={`${metrics.throughput}/s`} tone="text-green-300" />
           <MetricRow label={t('editor.node.p95')} value={`${metrics.p95.toFixed(0)}ms`} tone="text-cyan-300" />

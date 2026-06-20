@@ -91,8 +91,8 @@ function GoldenSignal({
   );
 }
 
-const axis = { stroke: '#8a909c', fontSize: 10, fontFamily: 'monospace' };
-const gridStroke = '#26262b';
+const axis = { stroke: '#7d8590', fontSize: 10, fontFamily: 'monospace' };
+const gridStroke = '#1f262f';
 
 function formatWarning(w: string, t: (k: string, o?: Record<string, unknown>) => string): string {
   const [code, name] = w.split(':');
@@ -149,7 +149,7 @@ export default function Dashboard({ history, totalCost, costPerHour, successCoun
             unit="ms p95"
             hint={t('editor.dashboard.golden.latency_hint', { defaultValue: 'How long requests take' })}
             tone={p95Tone}
-            accent="#eab308"
+            accent="#f59e0b"
             series={data}
             dataKey="p95"
           />
@@ -159,7 +159,7 @@ export default function Dashboard({ history, totalCost, costPerHour, successCoun
             unit="req/s"
             hint={t('editor.dashboard.golden.traffic_hint', { defaultValue: 'Demand on the system' })}
             tone="text-signal-cyan"
-            accent="#06b6d4"
+            accent="#60a5fa"
             series={data}
             dataKey="throughput"
           />
@@ -169,7 +169,7 @@ export default function Dashboard({ history, totalCost, costPerHour, successCoun
             unit="/s"
             hint={t('editor.dashboard.golden.errors_hint', { defaultValue: 'Failed requests' })}
             tone={errorTone}
-            accent="#ef4444"
+            accent="#f05252"
             series={data}
             dataKey="errors"
           />
@@ -206,7 +206,7 @@ export default function Dashboard({ history, totalCost, costPerHour, successCoun
         <div className="h-2 bg-tactical-line overflow-hidden rounded-full">
           <div
             className="h-full transition-all duration-500 ease-out"
-            style={{ width: `${errorBudgetUsed}%`, backgroundColor: errorBudgetUsed >= 100 ? '#ef4444' : errorBudgetUsed >= 70 ? '#eab308' : '#34d399' }}
+            style={{ width: `${errorBudgetUsed}%`, backgroundColor: errorBudgetUsed >= 100 ? '#ef4444' : errorBudgetUsed >= 70 ? '#f59e0b' : '#22d3a0' }}
           />
         </div>
       </div>
@@ -226,8 +226,8 @@ export default function Dashboard({ history, totalCost, costPerHour, successCoun
             <XAxis dataKey="t" {...axis} />
             <YAxis {...axis} />
             <Tooltip contentStyle={tooltipStyle} />
-            <Area type="monotone" dataKey="offered" stroke="#8a909c" fill="#8a909c22" />
-            <Area type="monotone" dataKey="throughput" stroke="#34d399" fill="#34d39933" />
+            <Area type="monotone" dataKey="offered" stroke="#7a9088" fill="#7a908822" />
+            <Area type="monotone" dataKey="throughput" stroke="#22d3a0" fill="#22d3a033" />
           </AreaChart>
         </ChartCard>
 
@@ -237,9 +237,9 @@ export default function Dashboard({ history, totalCost, costPerHour, successCoun
             <XAxis dataKey="t" {...axis} />
             <YAxis {...axis} />
             <Tooltip contentStyle={tooltipStyle} />
-            <Line type="monotone" dataKey="p50" stroke="#56b6c8" dot={false} />
-            <Line type="monotone" dataKey="p95" stroke="#eab308" dot={false} />
-            <Line type="monotone" dataKey="p99" stroke="#ef4444" dot={false} />
+            <Line type="monotone" dataKey="p50" stroke="#60a5fa" dot={false} />
+            <Line type="monotone" dataKey="p95" stroke="#f59e0b" dot={false} />
+            <Line type="monotone" dataKey="p99" stroke="#f05252" dot={false} />
           </LineChart>
         </ChartCard>
 
@@ -250,13 +250,13 @@ export default function Dashboard({ history, totalCost, costPerHour, successCoun
             <YAxis yAxisId="l" domain={[0, 100]} {...axis} />
             <YAxis yAxisId="r" orientation="right" {...axis} />
             <Tooltip contentStyle={tooltipStyle} />
-            <Line yAxisId="l" type="monotone" dataKey="success" stroke="#34d399" dot={false} />
+            <Line yAxisId="l" type="monotone" dataKey="success" stroke="#22d3a0" dot={false} />
             <Line yAxisId="r" type="monotone" dataKey="inFlight" stroke="#a855f7" dot={false} />
           </LineChart>
         </ChartCard>
       </div>
 
-      <div className="font-sans text-[11px] text-slate-500 dark:text-tactical-label">
+      <div className="font-sans text-[11px] text-slate-500 dark:text-tactical-label mb-4 pb-3">
         {t('editor.dashboard.accumulated_cost')} <span className="font-mono text-signal-cyan">${totalCost.toFixed(4)}</span>
       </div>
     </div>
@@ -264,8 +264,8 @@ export default function Dashboard({ history, totalCost, costPerHour, successCoun
 }
 
 const tooltipStyle = {
-  background: '#101012',
-  border: '1px solid #26262b',
+  background: '#0b1015',
+  border: '1px solid #1f262f',
   fontFamily: 'monospace',
   fontSize: 11,
 };
